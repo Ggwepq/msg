@@ -57,7 +57,7 @@ class _KeyManagementScreenState extends State<KeyManagementScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                "optional prefix (friend's name, etc)",
+                "friend's name — becomes their default nickname",
                 style: TextStyle(color: _theme.textSecondary, fontSize: 13),
               ),
               const SizedBox(height: 12),

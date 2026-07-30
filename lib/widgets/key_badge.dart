@@ -47,7 +47,9 @@ class KeyBadge extends StatelessWidget {
                 Text(
                   accessKey.isClaimed
                       ? "→ ${accessKey.claimedByNickname ?? 'someone'}"
-                      : "created $createdStr · unclaimed",
+                      : accessKey.claimedByNickname != null
+                          ? "for ${accessKey.claimedByNickname} · waiting"
+                          : "created $createdStr · unclaimed",
                   style: TextStyle(
                     color: accessKey.isClaimed
                         ? accent.withOpacity(0.7)

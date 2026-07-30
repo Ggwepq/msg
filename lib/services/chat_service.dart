@@ -122,10 +122,12 @@ class ChatService extends ChangeNotifier {
 
     // Check Master Key
     if (cleanKey == adminMasterKey) {
+      final hasSetName = _adminNickname != "Host";
       return AccessKeyValidation(
         key: adminMasterKey,
         isMasterKey: true,
-        existingNickname: _adminNickname != "Host" ? _adminNickname : null,
+        existingNickname: hasSetName ? _adminNickname : null,
+        isReturning: hasSetName,
       );
     }
 
@@ -135,10 +137,13 @@ class ChatService extends ChangeNotifier {
     }
 
     final matchedKey = _keys[keyIndex];
+    // isReturning = key has been claimed before (has a userId)
+    final isReturning = matchedKey.isClaimed && matchedKey.claimedByUserId != null;
     return AccessKeyValidation(
       key: matchedKey.key,
       isMasterKey: false,
       existingNickname: matchedKey.claimedByNickname,
+      isReturning: isReturning,
     );
   }
 
@@ -179,11 +184,11 @@ class ChatService extends ChangeNotifier {
     }
 
     final matchedKey = _keys[keyIndex];
-    final existingNickname = matchedKey.claimedByNickname;
 
-    final finalNickname = (existingNickname != null && existingNickname.isNotEmpty)
-        ? existingNickname
-        : (nickname ?? "").trim();
+    // Use provided nickname if given, else fall back to pre-set, else error
+    final finalNickname = (nickname != null && nickname.trim().isNotEmpty)
+        ? nickname.trim()
+        : (matchedKey.claimedByNickname ?? "").trim();
 
     if (finalNickname.isEmpty) {
       throw Exception("Please set your nickname.");
@@ -267,17 +272,29 @@ class ChatService extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Generate new key
+  // Generate new key — prefix becomes default nickname for the friend
   Future<AccessKey> generateNewKey([String? customPrefix]) async {
-    final prefix = (customPrefix != null && customPrefix.trim().isNotEmpty)
-        ? customPrefix.trim().toUpperCase().replaceAll(' ', '-')
+    final rawPrefix = (customPrefix ?? "").trim();
+    final prefix = rawPrefix.isNotEmpty
+        ? rawPrefix.toUpperCase().replaceAll(' ', '-')
         : "KEY";
     final randomSuffix = (1000 + (DateTime.now().microsecondsSinceEpoch % 9000)).toString();
     final newKeyCode = "$prefix-$randomSuffix";
 
+    // Title-case the raw prefix for use as default nickname
+    String? defaultNickname;
+    if (rawPrefix.isNotEmpty) {
+      defaultNickname = rawPrefix
+          .split(RegExp(r'[\s\-_]'))
+          .where((w) => w.isNotEmpty)
+          .map((w) => w[0].toUpperCase() + w.substring(1).toLowerCase())
+          .join(' ');
+    }
+
     final newKey = AccessKey(
       key: newKeyCode,
       createdAt: DateTime.now(),
+      claimedByNickname: defaultNickname,
     );
 
     _keys.insert(0, newKey);
@@ -411,10 +428,12 @@ class AccessKeyValidation {
   final String key;
   final bool isMasterKey;
   final String? existingNickname;
+  final bool isReturning;
 
   AccessKeyValidation({
     required this.key,
     required this.isMasterKey,
     this.existingNickname,
+    this.isReturning = false,
   });
 }

@@ -18,18 +18,24 @@ class ChatDetailScreen extends StatefulWidget {
   State<ChatDetailScreen> createState() => _ChatDetailScreenState();
 }
 
-class _ChatDetailScreenState extends State<ChatDetailScreen> {
+class _ChatDetailScreenState extends State<ChatDetailScreen>
+    with SingleTickerProviderStateMixin {
   final _messageController = TextEditingController();
   final _scrollController = ScrollController();
   final _chatService = ChatService();
   final _theme = ThemeService();
   final _focusNode = FocusNode();
+  late AnimationController _entranceController;
 
   @override
   void initState() {
     super.initState();
     _chatService.addListener(_onChatUpdated);
     _theme.addListener(_onChatUpdated);
+    _entranceController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 400),
+    )..forward();
     WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
   }
 
@@ -40,6 +46,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     _messageController.dispose();
     _scrollController.dispose();
     _focusNode.dispose();
+    _entranceController.dispose();
     super.dispose();
   }
 
@@ -127,29 +134,31 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       ),
       body: Column(
         children: [
-          // Thin accent divider
-          Container(
-            height: 1,
-            color: accent.withOpacity(0.08),
-          ),
+          Container(height: 1, color: accent.withOpacity(0.06)),
 
           // Messages
           Expanded(
             child: messages.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text("💬", style: const TextStyle(fontSize: 40)),
-                        const SizedBox(height: 10),
-                        Text(
-                          "say something!",
-                          style: TextStyle(
-                            color: _theme.textSecondary,
-                            fontSize: 14,
+                ? FadeTransition(
+                    opacity: CurvedAnimation(
+                      parent: _entranceController,
+                      curve: Curves.easeOut,
+                    ),
+                    child: Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Text("💬", style: TextStyle(fontSize: 40)),
+                          const SizedBox(height: 10),
+                          Text(
+                            "say something!",
+                            style: TextStyle(
+                              color: _theme.textSecondary,
+                              fontSize: 14,
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   )
                 : ListView.builder(
@@ -165,65 +174,70 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
           ),
 
           // Input bar
-          Container(
-            padding: EdgeInsets.only(
-              left: 16,
-              right: 8,
-              top: 10,
-              bottom: MediaQuery.of(context).padding.bottom + 10,
+          FadeTransition(
+            opacity: CurvedAnimation(
+              parent: _entranceController,
+              curve: const Interval(0.3, 1.0, curve: Curves.easeOut),
             ),
-            decoration: BoxDecoration(
-              color: _theme.bg,
-              border: Border(
-                top: BorderSide(color: _theme.divider),
+            child: Container(
+              padding: EdgeInsets.only(
+                left: 16,
+                right: 8,
+                top: 10,
+                bottom: MediaQuery.of(context).padding.bottom + 10,
               ),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _messageController,
-                    focusNode: _focusNode,
-                    style: TextStyle(
-                      color: _theme.textPrimary,
-                      fontSize: 14,
-                    ),
-                    textInputAction: TextInputAction.send,
-                    onSubmitted: (_) => _sendMessage(),
-                    decoration: InputDecoration(
-                      hintText: "type something...",
-                      hintStyle: TextStyle(color: _theme.textMuted),
-                      filled: true,
-                      fillColor: _theme.surface,
-                      contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 18, vertical: 12),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(24),
-                        borderSide: BorderSide.none,
+              decoration: BoxDecoration(
+                color: _theme.bg,
+                border: Border(top: BorderSide(color: _theme.divider)),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _messageController,
+                      focusNode: _focusNode,
+                      style: TextStyle(
+                        color: _theme.textPrimary,
+                        fontSize: 14,
+                      ),
+                      textInputAction: TextInputAction.send,
+                      onSubmitted: (_) => _sendMessage(),
+                      decoration: InputDecoration(
+                        hintText: "type something...",
+                        hintStyle: TextStyle(color: _theme.textMuted),
+                        filled: true,
+                        fillColor: _theme.surface,
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 18, vertical: 12),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(24),
+                          borderSide: BorderSide.none,
+                        ),
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 6),
-                GestureDetector(
-                  onTap: _sendMessage,
-                  child: Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: accent,
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Center(
-                      child: Icon(
-                        Icons.arrow_upward_rounded,
-                        color: Colors.white,
-                        size: 20,
+                  const SizedBox(width: 6),
+                  GestureDetector(
+                    onTap: _sendMessage,
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: accent,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Center(
+                        child: Icon(
+                          Icons.arrow_upward_rounded,
+                          color: Colors.white,
+                          size: 20,
+                        ),
                       ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ],
