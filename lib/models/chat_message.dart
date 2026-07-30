@@ -8,6 +8,8 @@ class ChatMessage {
   final bool isRead;
   final String? replyToText;
   final String? replyToSender;
+  bool isDeleted;
+  Map<String, String> reactions; // userId -> emoji
 
   ChatMessage({
     required this.id,
@@ -19,7 +21,9 @@ class ChatMessage {
     this.isRead = false,
     this.replyToText,
     this.replyToSender,
-  });
+    this.isDeleted = false,
+    Map<String, String>? reactions,
+  }) : reactions = reactions ?? {};
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -31,6 +35,8 @@ class ChatMessage {
         'isRead': isRead,
         'replyToText': replyToText,
         'replyToSender': replyToSender,
+        'isDeleted': isDeleted,
+        'reactions': reactions,
       };
 
   factory ChatMessage.fromJson(Map<String, dynamic> json) => ChatMessage(
@@ -43,5 +49,9 @@ class ChatMessage {
         isRead: json['isRead'] as bool? ?? false,
         replyToText: json['replyToText'] as String?,
         replyToSender: json['replyToSender'] as String?,
+        isDeleted: json['isDeleted'] as bool? ?? false,
+        reactions: json['reactions'] != null
+            ? Map<String, String>.from(json['reactions'] as Map)
+            : {},
       );
 }

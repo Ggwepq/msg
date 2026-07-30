@@ -310,11 +310,33 @@ class ChatService extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Delete message
+  // Delete message (marks as deleted so placeholder remains)
   Future<void> deleteMessage(String messageId) async {
-    _messages.removeWhere((m) => m.id == messageId);
-    await _saveMessages();
-    notifyListeners();
+    final index = _messages.indexWhere((m) => m.id == messageId);
+    if (index != -1) {
+      _messages[index].isDeleted = true;
+      await _saveMessages();
+      notifyListeners();
+    }
+  }
+
+  // Toggle Emoji Reaction on a message
+  Future<void> toggleReaction({
+    required String messageId,
+    required String userId,
+    required String emoji,
+  }) async {
+    final index = _messages.indexWhere((m) => m.id == messageId);
+    if (index != -1) {
+      final msg = _messages[index];
+      if (msg.reactions[userId] == emoji) {
+        msg.reactions.remove(userId);
+      } else {
+        msg.reactions[userId] = emoji;
+      }
+      await _saveMessages();
+      notifyListeners();
+    }
   }
 
   // Send message

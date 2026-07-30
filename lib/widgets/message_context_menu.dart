@@ -13,6 +13,7 @@ class MessageContextMenu extends StatefulWidget {
   final VoidCallback onCopy;
   final VoidCallback onReply;
   final VoidCallback? onDelete;
+  final Function(String emoji)? onReactionSelect;
 
   const MessageContextMenu({
     super.key,
@@ -24,6 +25,7 @@ class MessageContextMenu extends StatefulWidget {
     required this.onCopy,
     required this.onReply,
     this.onDelete,
+    this.onReactionSelect,
   });
 
   @override
@@ -38,6 +40,8 @@ class _MessageContextMenuState extends State<MessageContextMenu>
   late Animation<double> _fadeAnim;
   late Animation<double> _blurAnim;
   late Animation<double> _menuSlideAnim;
+
+  static const List<String> reactionsList = ["❤️", "😂", "🔥", "👍", "😮", "🚀"];
 
   @override
   void initState() {
@@ -87,15 +91,13 @@ class _MessageContextMenuState extends State<MessageContextMenu>
     final accent = _theme.primary;
     final screenSize = MediaQuery.of(context).size;
 
-    // Calculate positions
     final bubbleTop = widget.tapPosition.dy - (widget.bubbleSize.height / 2);
     final clampedTop = bubbleTop.clamp(80.0, screenSize.height - 300);
 
-    // Menu appears above or below the bubble depending on space
     final spaceBelow = screenSize.height - (clampedTop + widget.bubbleSize.height);
-    final menuAbove = spaceBelow < 180;
+    final menuAbove = spaceBelow < 220;
     final menuTop = menuAbove
-        ? clampedTop - 8 // will use Positioned bottom instead
+        ? clampedTop - 8
         : clampedTop + widget.bubbleSize.height + 8;
 
     return AnimatedBuilder(
@@ -153,10 +155,17 @@ class _MessageContextMenuState extends State<MessageContextMenu>
                       ],
                     ),
                     child: Text(
-                      widget.message.text,
+                      widget.message.isDeleted
+                          ? "this message was deleted"
+                          : widget.message.text,
                       style: TextStyle(
-                        color: _theme.textPrimary,
+                        color: widget.message.isDeleted
+                            ? _theme.textMuted
+                            : _theme.textPrimary,
                         fontSize: 14.5,
+                        fontStyle: widget.message.isDeleted
+                            ? FontStyle.italic
+                            : FontStyle.normal,
                         height: 1.35,
                       ),
                     ),
@@ -165,7 +174,7 @@ class _MessageContextMenuState extends State<MessageContextMenu>
               ),
             ),
 
-            // Context menu options
+            // Context menu options + Emoji Bar
             Positioned(
               top: menuAbove ? null : menuTop,
               bottom: menuAbove
@@ -184,7 +193,51 @@ class _MessageContextMenuState extends State<MessageContextMenu>
                     curve: const Interval(0.15, 1.0,
                         curve: Curves.easeOutCubic),
                   )),
-                  child: _buildMenu(accent),
+                  child: Column(
+                    crossAxisAlignment: widget.isMe
+                        ? CrossAxisAlignment.end
+                        : CrossAxisAlignment.start,
+                    children: [
+                      // iOS-Style Emoji Tapback Pill Bar
+                      if (!widget.message.isDeleted && widget.onReactionSelect != null) ...[
+                        Container(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: _theme.surfaceLight,
+                            borderRadius: BorderRadius.circular(24),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.3),
+                                blurRadius: 16,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: reactionsList.map((emoji) {
+                              return GestureDetector(
+                                onTap: () {
+                                  widget.onReactionSelect!(emoji);
+                                  _dismiss();
+                                },
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                                  child: Text(
+                                    emoji,
+                                    style: const TextStyle(fontSize: 22),
+                                  ),
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                        ),
+                      ],
+
+                      _buildMenu(accent),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -211,24 +264,26 @@ class _MessageContextMenuState extends State<MessageContextMenu>
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _menuItem(
-            icon: Icons.copy_rounded,
-            label: "Copy",
-            onTap: () {
-              widget.onCopy();
-              _dismiss();
-            },
-          ),
-          _divider(),
-          _menuItem(
-            icon: Icons.reply_rounded,
-            label: "Reply",
-            onTap: () {
-              widget.onReply();
-              _dismiss();
-            },
-          ),
-          if (widget.onDelete != null) ...[
+          if (!widget.message.isDeleted) ...[
+            _menuItem(
+              icon: Icons.copy_rounded,
+              label: "Copy",
+              onTap: () {
+                widget.onCopy();
+                _dismiss();
+              },
+            ),
+            _divider(),
+            _menuItem(
+              icon: Icons.reply_rounded,
+              label: "Reply",
+              onTap: () {
+                widget.onReply();
+                _dismiss();
+              },
+            ),
+          ],
+          if (widget.onDelete != null && !widget.message.isDeleted) ...[
             _divider(),
             _menuItem(
               icon: Icons.delete_outline_rounded,

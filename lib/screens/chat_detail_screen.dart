@@ -111,6 +111,13 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
           tapPosition: position,
           bubbleSize: size,
           onDismiss: _removeContextMenu,
+          onReactionSelect: (emoji) {
+            _chatService.toggleReaction(
+              messageId: message.id,
+              userId: widget.currentUser.id,
+              emoji: emoji,
+            );
+          },
           onCopy: () {
             Clipboard.setData(ClipboardData(text: message.text));
             ScaffoldMessenger.of(context).showSnackBar(
@@ -135,10 +142,96 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
     Overlay.of(context).insert(_contextMenuOverlay!);
   }
 
+  void _showReactionsBottomSheet(ChatMessage message) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1E293B),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        final entries = message.reactions.entries.toList();
+
+        return Container(
+          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    "Reactions",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, color: Colors.white54, size: 20),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              if (entries.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 16),
+                  child: Text("No reactions yet", style: TextStyle(color: Colors.white38)),
+                )
+              else
+                Flexible(
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: entries.length,
+                    itemBuilder: (context, index) {
+                      final userId = entries[index].key;
+                      final emoji = entries[index].value;
+                      final isMyReaction = userId == widget.currentUser.id;
+                      final displayName = isMyReaction
+                          ? "You"
+                          : (userId == widget.peerUser.id ? widget.peerUser.nickname : "Friend");
+
+                      return ListTile(
+                        leading: Text(emoji, style: const TextStyle(fontSize: 24)),
+                        title: Text(
+                          displayName,
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                        ),
+                        subtitle: isMyReaction
+                            ? const Text("Tap to remove your reaction", style: TextStyle(color: Colors.white54, fontSize: 12))
+                            : null,
+                        trailing: isMyReaction
+                            ? const Icon(Icons.delete_outline, color: Colors.redAccent, size: 18)
+                            : null,
+                        onTap: () {
+                          if (isMyReaction) {
+                            _chatService.toggleReaction(
+                              messageId: message.id,
+                              userId: widget.currentUser.id,
+                              emoji: emoji,
+                            );
+                            Navigator.pop(context);
+                          }
+                        },
+                      );
+                    },
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final messages = _chatService.getConversationWith(widget.peerUser.id);
     final accent = _theme.primary;
+    final isAdmin = widget.currentUser.role == UserRole.admin;
 
     return Scaffold(
       backgroundColor: _theme.bg,
@@ -223,8 +316,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
                       return ChatBubble(
                         message: msg,
                         isMe: isMe,
+                        isAdmin: isAdmin,
                         onLongPress: (position, size) =>
                             _showContextMenu(msg, isMe, position, size),
+                        onReactionBadgeTap: () => _showReactionsBottomSheet(msg),
                       );
                     },
                   ),
