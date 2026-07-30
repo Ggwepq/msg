@@ -6,6 +6,8 @@ class ChatMessage {
   final String text;
   final DateTime timestamp;
   final bool isRead;
+  final String? replyToText;
+  final String? replyToSender;
 
   ChatMessage({
     required this.id,
@@ -15,6 +17,8 @@ class ChatMessage {
     required this.text,
     required this.timestamp,
     this.isRead = false,
+    this.replyToText,
+    this.replyToSender,
   });
 
   Map<String, dynamic> toJson() => {
@@ -25,6 +29,8 @@ class ChatMessage {
         'text': text,
         'timestamp': timestamp.toIso8601String(),
         'isRead': isRead,
+        'replyToText': replyToText,
+        'replyToSender': replyToSender,
       };
 
   factory ChatMessage.fromJson(Map<String, dynamic> json) => ChatMessage(
@@ -35,5 +41,7 @@ class ChatMessage {
         text: json['text'] as String,
         timestamp: DateTime.parse(json['timestamp'] as String),
         isRead: json['isRead'] as bool? ?? false,
+        replyToText: json['replyToText'] as String?,
+        replyToSender: json['replyToSender'] as String?,
       );
 }

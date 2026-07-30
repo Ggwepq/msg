@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import '../models/chat_message.dart';
 import '../models/user_profile.dart';
 import '../services/chat_service.dart';
 import '../services/theme_service.dart';
 import '../widgets/chat_bubble.dart';
+import '../widgets/message_context_menu.dart';
 
 class ChatDetailScreen extends StatefulWidget {
   final UserProfile currentUser;
@@ -27,6 +30,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
   final _focusNode = FocusNode();
   late AnimationController _entranceController;
 
+  ChatMessage? _replyingToMessage;
+  OverlayEntry? _contextMenuOverlay;
+
   @override
   void initState() {
     super.initState();
@@ -41,6 +47,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
 
   @override
   void dispose() {
+    _removeContextMenu();
     _chatService.removeListener(_onChatUpdated);
     _theme.removeListener(_onChatUpdated);
     _messageController.dispose();
@@ -76,11 +83,56 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
     _chatService.sendMessage(
       text: text,
       receiverId: widget.peerUser.id,
+      replyToText: _replyingToMessage?.text,
+      replyToSender: _replyingToMessage?.senderNickname,
     );
 
     _messageController.clear();
+    setState(() {
+      _replyingToMessage = null;
+    });
     _focusNode.requestFocus();
     _scrollToBottom();
+  }
+
+  void _removeContextMenu() {
+    _contextMenuOverlay?.remove();
+    _contextMenuOverlay = null;
+  }
+
+  void _showContextMenu(ChatMessage message, bool isMe, Offset position, Size size) {
+    _removeContextMenu();
+
+    _contextMenuOverlay = OverlayEntry(
+      builder: (context) {
+        return MessageContextMenu(
+          message: message,
+          isMe: isMe,
+          tapPosition: position,
+          bubbleSize: size,
+          onDismiss: _removeContextMenu,
+          onCopy: () {
+            Clipboard.setData(ClipboardData(text: message.text));
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text("Copied to clipboard 📋")),
+            );
+          },
+          onReply: () {
+            setState(() {
+              _replyingToMessage = message;
+            });
+            _focusNode.requestFocus();
+          },
+          onDelete: isMe
+              ? () {
+                  _chatService.deleteMessage(message.id);
+                }
+              : null,
+        );
+      },
+    );
+
+    Overlay.of(context).insert(_contextMenuOverlay!);
   }
 
   @override
@@ -136,7 +188,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
         children: [
           Container(height: 1, color: accent.withOpacity(0.06)),
 
-          // Messages
+          // Messages List
           Expanded(
             child: messages.isEmpty
                 ? FadeTransition(
@@ -168,10 +220,68 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
                     itemBuilder: (context, index) {
                       final msg = messages[index];
                       final isMe = msg.senderId == widget.currentUser.id;
-                      return ChatBubble(message: msg, isMe: isMe);
+                      return ChatBubble(
+                        message: msg,
+                        isMe: isMe,
+                        onLongPress: (position, size) =>
+                            _showContextMenu(msg, isMe, position, size),
+                      );
                     },
                   ),
           ),
+
+          // Reply Preview Banner
+          if (_replyingToMessage != null)
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              color: _theme.surface,
+              child: Row(
+                children: [
+                  Container(
+                    width: 3,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      color: accent,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          "Replying to ${_replyingToMessage!.senderNickname}",
+                          style: TextStyle(
+                            color: accent,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Text(
+                          _replyingToMessage!.text,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: _theme.textSecondary,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.close, size: 18, color: _theme.textMuted),
+                    onPressed: () {
+                      setState(() {
+                        _replyingToMessage = null;
+                      });
+                    },
+                  ),
+                ],
+              ),
+            ),
 
           // Input bar
           FadeTransition(
@@ -203,7 +313,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
                       textInputAction: TextInputAction.send,
                       onSubmitted: (_) => _sendMessage(),
                       decoration: InputDecoration(
-                        hintText: "type something...",
+                        hintText: _replyingToMessage != null
+                            ? "Type your reply..."
+                            : "type something...",
                         hintStyle: TextStyle(color: _theme.textMuted),
                         filled: true,
                         fillColor: _theme.surface,

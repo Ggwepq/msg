@@ -310,10 +310,19 @@ class ChatService extends ChangeNotifier {
     notifyListeners();
   }
 
+  // Delete message
+  Future<void> deleteMessage(String messageId) async {
+    _messages.removeWhere((m) => m.id == messageId);
+    await _saveMessages();
+    notifyListeners();
+  }
+
   // Send message
   Future<void> sendMessage({
     required String text,
     required String receiverId,
+    String? replyToText,
+    String? replyToSender,
   }) async {
     if (_currentUser == null) return;
     if (text.trim().isEmpty) return;
@@ -325,6 +334,8 @@ class ChatService extends ChangeNotifier {
       receiverId: receiverId,
       text: text.trim(),
       timestamp: DateTime.now(),
+      replyToText: replyToText,
+      replyToSender: replyToSender,
     );
 
     _messages.add(newMessage);
