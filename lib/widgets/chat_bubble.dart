@@ -1,7 +1,11 @@
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/chat_message.dart';
 import '../services/theme_service.dart';
+import 'full_screen_media_viewer.dart';
+import 'inline_video_player.dart';
 
 class ChatBubble extends StatefulWidget {
   final ChatMessage message;
@@ -26,13 +30,57 @@ class ChatBubble extends StatefulWidget {
 class _ChatBubbleState extends State<ChatBubble> {
   bool _isRevealedByAdmin = false;
 
+  Widget _buildMediaContent(ThemeService theme, Color accent) {
+    final mediaPath = widget.message.mediaPath;
+    if (mediaPath == null || mediaPath.isEmpty) return const SizedBox.shrink();
+
+    if (widget.message.messageType == 'image') {
+      return Container(
+        margin: const EdgeInsets.only(bottom: 6),
+        constraints: const BoxConstraints(maxHeight: 220),
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: kIsWeb || mediaPath.startsWith('http')
+            ? Image.network(
+                mediaPath,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => _buildMediaError("Image file unavailable"),
+              )
+            : Image.file(
+                File(mediaPath),
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => _buildMediaError("Image file unavailable"),
+              ),
+      );
+    } else if (widget.message.messageType == 'video') {
+      return InlineVideoPlayer(videoPath: mediaPath);
+    }
+    return const SizedBox.shrink();
+  }
+
+  Widget _buildMediaError(String msg) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      color: Colors.black26,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.broken_image_outlined, color: Colors.white54, size: 18),
+          const SizedBox(width: 6),
+          Text(msg, style: const TextStyle(color: Colors.white54, fontSize: 12)),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = ThemeService();
     final accent = theme.primary;
     final timeStr = DateFormat('h:mm a').format(widget.message.timestamp);
 
-    // Count reaction occurrences
     final Map<String, int> reactionCounts = {};
     widget.message.reactions.forEach((_, emoji) {
       reactionCounts[emoji] = (reactionCounts[emoji] ?? 0) + 1;
@@ -45,11 +93,20 @@ class _ChatBubbleState extends State<ChatBubble> {
       alignment: widget.isMe ? Alignment.centerRight : Alignment.centerLeft,
       child: GestureDetector(
         onTap: () {
-          // If deleted message & user is Admin, silently toggle reveal/hide
           if (isDeleted && widget.isAdmin) {
             setState(() {
               _isRevealedByAdmin = !_isRevealedByAdmin;
             });
+          } else if (isShowingNormalStyle && widget.message.mediaPath != null) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => FullScreenMediaViewer(
+                  mediaPath: widget.message.mediaPath!,
+                  messageType: widget.message.messageType,
+                ),
+              ),
+            );
           }
         },
         onLongPressStart: (details) {
@@ -71,7 +128,7 @@ class _ChatBubbleState extends State<ChatBubble> {
                 widget.isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 decoration: BoxDecoration(
                   color: isShowingNormalStyle
                       ? (widget.isMe ? accent.withOpacity(0.18) : theme.surface)
@@ -128,16 +185,21 @@ class _ChatBubbleState extends State<ChatBubble> {
                       ),
                     ],
 
-                    // Message text (Normal style vs Deleted placeholder)
+                    // Media Content (Image / Playable Video)
+                    if (isShowingNormalStyle && widget.message.mediaPath != null)
+                      _buildMediaContent(theme, accent),
+
+                    // Message text
                     if (isShowingNormalStyle) ...[
-                      Text(
-                        widget.message.text,
-                        style: TextStyle(
-                          color: theme.textPrimary,
-                          fontSize: 14.5,
-                          height: 1.35,
+                      if (widget.message.text.isNotEmpty)
+                        Text(
+                          widget.message.text,
+                          style: TextStyle(
+                            color: theme.textPrimary,
+                            fontSize: 14.5,
+                            height: 1.35,
+                          ),
                         ),
-                      ),
                     ] else ...[
                       Row(
                         mainAxisSize: MainAxisSize.min,

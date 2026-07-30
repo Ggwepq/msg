@@ -1,4 +1,6 @@
+import 'dart:io';
 import 'dart:ui';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/chat_message.dart';
@@ -86,19 +88,77 @@ class _MessageContextMenuState extends State<MessageContextMenu>
     widget.onDismiss();
   }
 
+  Widget _buildMediaPreview(Size screenSize, Color accent) {
+    final mediaPath = widget.message.mediaPath!;
+    final isImage = widget.message.messageType == 'image';
+
+    return Container(
+      constraints: BoxConstraints(
+        maxWidth: screenSize.width * 0.85,
+        maxHeight: screenSize.height * 0.5,
+      ),
+      decoration: BoxDecoration(
+        color: _theme.surface,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: accent.withOpacity(0.2),
+            blurRadius: 24,
+            spreadRadius: 4,
+          ),
+        ],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Flexible(
+            child: isImage
+                ? (kIsWeb || mediaPath.startsWith('http')
+                    ? Image.network(mediaPath, fit: BoxFit.cover)
+                    : Image.file(File(mediaPath), fit: BoxFit.cover))
+                : Container(
+                    height: 240,
+                    color: Colors.black45,
+                    child: Center(
+                      child: CircleAvatar(
+                        radius: 30,
+                        backgroundColor: accent,
+                        child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 40),
+                      ),
+                    ),
+                  ),
+          ),
+          if (widget.message.text.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Text(
+                widget.message.text,
+                style: TextStyle(color: _theme.textPrimary, fontSize: 14),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final accent = _theme.primary;
     final screenSize = MediaQuery.of(context).size;
+    final isMedia = widget.message.mediaPath != null && !widget.message.isDeleted;
 
     final bubbleTop = widget.tapPosition.dy - (widget.bubbleSize.height / 2);
-    final clampedTop = bubbleTop.clamp(80.0, screenSize.height - 300);
+    final clampedTop = isMedia
+        ? (screenSize.height * 0.15)
+        : bubbleTop.clamp(80.0, screenSize.height - 300);
 
-    final spaceBelow = screenSize.height - (clampedTop + widget.bubbleSize.height);
+    final spaceBelow = screenSize.height - (clampedTop + (isMedia ? 320 : widget.bubbleSize.height));
     final menuAbove = spaceBelow < 220;
     final menuTop = menuAbove
         ? clampedTop - 8
-        : clampedTop + widget.bubbleSize.height + 8;
+        : clampedTop + (isMedia ? 340 : widget.bubbleSize.height) + 8;
 
     return AnimatedBuilder(
       animation: _controller,
@@ -114,7 +174,7 @@ class _MessageContextMenuState extends State<MessageContextMenu>
                   sigmaY: _blurAnim.value,
                 ),
                 child: Container(
-                  color: Colors.black.withOpacity(0.35 * _fadeAnim.value),
+                  color: Colors.black.withOpacity(0.45 * _fadeAnim.value),
                 ),
               ),
             ),
@@ -122,54 +182,60 @@ class _MessageContextMenuState extends State<MessageContextMenu>
             // Message preview (scaled + lifted)
             Positioned(
               top: clampedTop,
-              left: widget.isMe ? null : 14,
-              right: widget.isMe ? 14 : null,
+              left: isMedia
+                  ? (screenSize.width * 0.075)
+                  : (widget.isMe ? null : 14),
+              right: isMedia
+                  ? null
+                  : (widget.isMe ? 14 : null),
               child: Transform.scale(
                 scale: _scaleAnim.value,
                 child: FadeTransition(
                   opacity: _fadeAnim,
-                  child: Container(
-                    constraints: BoxConstraints(
-                      maxWidth: screenSize.width * 0.75,
-                    ),
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 11),
-                    decoration: BoxDecoration(
-                      color: widget.isMe
-                          ? accent.withOpacity(0.22)
-                          : _theme.surface,
-                      borderRadius: BorderRadius.only(
-                        topLeft: const Radius.circular(20),
-                        topRight: const Radius.circular(20),
-                        bottomLeft:
-                            Radius.circular(widget.isMe ? 20 : 6),
-                        bottomRight:
-                            Radius.circular(widget.isMe ? 6 : 20),
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: accent.withOpacity(0.1),
-                          blurRadius: 20,
-                          spreadRadius: 2,
+                  child: isMedia
+                      ? _buildMediaPreview(screenSize, accent)
+                      : Container(
+                          constraints: BoxConstraints(
+                            maxWidth: screenSize.width * 0.75,
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 11),
+                          decoration: BoxDecoration(
+                            color: widget.isMe
+                                ? accent.withOpacity(0.22)
+                                : _theme.surface,
+                            borderRadius: BorderRadius.only(
+                              topLeft: const Radius.circular(20),
+                              topRight: const Radius.circular(20),
+                              bottomLeft:
+                                  Radius.circular(widget.isMe ? 20 : 6),
+                              bottomRight:
+                                  Radius.circular(widget.isMe ? 6 : 20),
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: accent.withOpacity(0.1),
+                                blurRadius: 20,
+                                spreadRadius: 2,
+                              ),
+                            ],
+                          ),
+                          child: Text(
+                            widget.message.isDeleted
+                                ? "this message was deleted"
+                                : widget.message.text,
+                            style: TextStyle(
+                              color: widget.message.isDeleted
+                                  ? _theme.textMuted
+                                  : _theme.textPrimary,
+                              fontSize: 14.5,
+                              fontStyle: widget.message.isDeleted
+                                  ? FontStyle.italic
+                                  : FontStyle.normal,
+                              height: 1.35,
+                            ),
+                          ),
                         ),
-                      ],
-                    ),
-                    child: Text(
-                      widget.message.isDeleted
-                          ? "this message was deleted"
-                          : widget.message.text,
-                      style: TextStyle(
-                        color: widget.message.isDeleted
-                            ? _theme.textMuted
-                            : _theme.textPrimary,
-                        fontSize: 14.5,
-                        fontStyle: widget.message.isDeleted
-                            ? FontStyle.italic
-                            : FontStyle.normal,
-                        height: 1.35,
-                      ),
-                    ),
-                  ),
                 ),
               ),
             ),
@@ -180,8 +246,12 @@ class _MessageContextMenuState extends State<MessageContextMenu>
               bottom: menuAbove
                   ? screenSize.height - clampedTop + 8
                   : null,
-              left: widget.isMe ? null : 14,
-              right: widget.isMe ? 14 : null,
+              left: isMedia
+                  ? (screenSize.width * 0.075)
+                  : (widget.isMe ? null : 14),
+              right: isMedia
+                  ? null
+                  : (widget.isMe ? 14 : null),
               child: FadeTransition(
                 opacity: _menuSlideAnim,
                 child: SlideTransition(

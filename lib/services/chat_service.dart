@@ -345,9 +345,11 @@ class ChatService extends ChangeNotifier {
     required String receiverId,
     String? replyToText,
     String? replyToSender,
+    String messageType = 'text',
+    String? mediaPath,
   }) async {
     if (_currentUser == null) return;
-    if (text.trim().isEmpty) return;
+    if (text.trim().isEmpty && mediaPath == null) return;
 
     final newMessage = ChatMessage(
       id: "msg_${DateTime.now().millisecondsSinceEpoch}",
@@ -358,6 +360,8 @@ class ChatService extends ChangeNotifier {
       timestamp: DateTime.now(),
       replyToText: replyToText,
       replyToSender: replyToSender,
+      messageType: messageType,
+      mediaPath: mediaPath,
     );
 
     _messages.add(newMessage);

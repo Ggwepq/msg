@@ -1,10 +1,14 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:video_compress/video_compress.dart';
 import '../models/chat_message.dart';
 import '../models/user_profile.dart';
 import '../services/chat_service.dart';
 import '../services/theme_service.dart';
 import '../widgets/chat_bubble.dart';
+import '../widgets/media_send_preview_dialog.dart';
 import '../widgets/message_context_menu.dart';
 
 class ChatDetailScreen extends StatefulWidget {
@@ -28,6 +32,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
   final _chatService = ChatService();
   final _theme = ThemeService();
   final _focusNode = FocusNode();
+  final _picker = ImagePicker();
   late AnimationController _entranceController;
 
   ChatMessage? _replyingToMessage;
@@ -93,6 +98,85 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
     });
     _focusNode.requestFocus();
     _scrollToBottom();
+  }
+
+  Future<void> _pickAndSendMedia(bool isVideo) async {
+    try {
+      final XFile? file = isVideo
+          ? await _picker.pickVideo(source: ImageSource.gallery)
+          : await _picker.pickImage(source: ImageSource.gallery, imageQuality: 85);
+
+      if (file == null || !mounted) return;
+
+      showDialog(
+        context: context,
+        builder: (context) {
+          return MediaSendPreviewDialog(
+            pickedFile: file,
+            isVideo: isVideo,
+            onConfirmSend: (finalPath, caption) {
+              _chatService.sendMessage(
+                text: caption,
+                receiverId: widget.peerUser.id,
+                replyToText: _replyingToMessage?.text,
+                replyToSender: _replyingToMessage?.senderNickname,
+                messageType: isVideo ? 'video' : 'image',
+                mediaPath: finalPath,
+              );
+
+              _messageController.clear();
+              setState(() {
+                _replyingToMessage = null;
+              });
+              _scrollToBottom();
+            },
+          );
+        },
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Media picker error: $e")),
+        );
+      }
+    }
+  }
+
+  void _showMediaPickerOptions() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1E293B),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            child: Wrap(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.image_outlined, color: Colors.indigoAccent),
+                  title: const Text("Send Photo", style: TextStyle(color: Colors.white)),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _pickAndSendMedia(false);
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.videocam_outlined, color: Colors.purpleAccent),
+                  title: const Text("Send Video", style: TextStyle(color: Colors.white)),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _pickAndSendMedia(true);
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   void _removeContextMenu() {
@@ -386,7 +470,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
             ),
             child: Container(
               padding: EdgeInsets.only(
-                left: 16,
+                left: 10,
                 right: 8,
                 top: 10,
                 bottom: MediaQuery.of(context).padding.bottom + 10,
@@ -397,6 +481,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
               ),
               child: Row(
                 children: [
+                  IconButton(
+                    icon: Icon(Icons.add_circle_outline_rounded, color: accent, size: 26),
+                    onPressed: _showMediaPickerOptions,
+                  ),
                   Expanded(
                     child: TextField(
                       controller: _messageController,

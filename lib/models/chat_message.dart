@@ -8,6 +8,8 @@ class ChatMessage {
   final bool isRead;
   final String? replyToText;
   final String? replyToSender;
+  final String messageType; // 'text' | 'image' | 'video'
+  final String? mediaPath;
   bool isDeleted;
   Map<String, String> reactions; // userId -> emoji
 
@@ -21,6 +23,8 @@ class ChatMessage {
     this.isRead = false,
     this.replyToText,
     this.replyToSender,
+    this.messageType = 'text',
+    this.mediaPath,
     this.isDeleted = false,
     Map<String, String>? reactions,
   }) : reactions = reactions ?? {};
@@ -35,6 +39,8 @@ class ChatMessage {
         'isRead': isRead,
         'replyToText': replyToText,
         'replyToSender': replyToSender,
+        'messageType': messageType,
+        'mediaPath': mediaPath,
         'isDeleted': isDeleted,
         'reactions': reactions,
       };
@@ -49,6 +55,8 @@ class ChatMessage {
         isRead: json['isRead'] as bool? ?? false,
         replyToText: json['replyToText'] as String?,
         replyToSender: json['replyToSender'] as String?,
+        messageType: json['messageType'] as String? ?? 'text',
+        mediaPath: json['mediaPath'] as String?,
         isDeleted: json['isDeleted'] as bool? ?? false,
         reactions: json['reactions'] != null
             ? Map<String, String>.from(json['reactions'] as Map)
