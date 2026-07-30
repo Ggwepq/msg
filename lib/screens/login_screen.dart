@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/chat_service.dart';
+import '../services/theme_service.dart';
 import '../models/user_profile.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -11,52 +12,61 @@ class LoginScreen extends StatefulWidget {
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _LoginScreenState extends State<LoginScreen>
+    with SingleTickerProviderStateMixin {
   final _keyController = TextEditingController();
   final _nicknameController = TextEditingController();
+  final _theme = ThemeService();
 
   int _step = 1;
   bool _isLoading = false;
   String? _errorMessage;
   AccessKeyValidation? _validatedKeyInfo;
 
+  late AnimationController _pulseController;
+  late Animation<double> _pulseAnim;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2200),
+    )..repeat(reverse: true);
+    _pulseAnim = Tween<double>(begin: 0.85, end: 1.0).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+    );
+  }
+
   @override
   void dispose() {
+    _pulseController.dispose();
     _keyController.dispose();
     _nicknameController.dispose();
     super.dispose();
   }
 
   Future<void> _handleValidateKey() async {
-    setState(() {
-      _errorMessage = null;
-    });
+    setState(() => _errorMessage = null);
 
     try {
       final chatService = ChatService();
       final validated = chatService.validateKey(_keyController.text);
-
       _validatedKeyInfo = validated;
 
-      // If key ALREADY has a nickname, log in directly without asking!
-      if (validated.existingNickname != null && validated.existingNickname!.isNotEmpty) {
-        setState(() {
-          _isLoading = true;
-        });
-
+      // Existing nickname → direct login
+      if (validated.existingNickname != null &&
+          validated.existingNickname!.isNotEmpty) {
+        setState(() => _isLoading = true);
         final user = await chatService.completeLogin(
           keyInput: validated.key,
           nickname: validated.existingNickname,
         );
-
         widget.onLoginSuccess(user);
         return;
       }
 
-      // New key without nickname -> move to step 2
-      setState(() {
-        _step = 2;
-      });
+      setState(() => _step = 2);
     } catch (e) {
       setState(() {
         _errorMessage = e.toString().replaceAll("Exception: ", "");
@@ -67,7 +77,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _handleCompleteLogin() async {
     if (_validatedKeyInfo == null) return;
-
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -79,229 +88,199 @@ class _LoginScreenState extends State<LoginScreen> {
         keyInput: _validatedKeyInfo!.key,
         nickname: _nicknameController.text,
       );
-
       widget.onLoginSuccess(user);
     } catch (e) {
       setState(() {
         _errorMessage = e.toString().replaceAll("Exception: ", "");
       });
     } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final accent = _theme.primary;
+
     return Scaffold(
-      backgroundColor: const Color(0xFF0F172A),
+      backgroundColor: _theme.bg,
       body: Center(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24.0),
+          padding: const EdgeInsets.symmetric(horizontal: 28),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Logo
-              Container(
-                padding: const EdgeInsets.all(22),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFF6366F1).withOpacity(0.4),
-                      blurRadius: 24,
-                      spreadRadius: 2,
+              // Pulsing key icon
+              AnimatedBuilder(
+                animation: _pulseAnim,
+                builder: (context, child) {
+                  return Transform.scale(
+                    scale: _pulseAnim.value,
+                    child: Container(
+                      width: 90,
+                      height: 90,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: accent.withOpacity(0.12),
+                      ),
+                      child: Center(
+                        child: Text(
+                          "🔑",
+                          style: const TextStyle(fontSize: 40),
+                        ),
+                      ),
                     ),
-                  ],
-                ),
-                child: const Icon(
-                  Icons.vpn_key_rounded,
-                  size: 46,
-                  color: Colors.white,
-                ),
+                  );
+                },
               ),
-              const SizedBox(height: 24),
-              const Text(
-                "Welcome!",
+              const SizedBox(height: 28),
+
+              // Title
+              Text(
+                _step == 1 ? "got a key?" : "who are you?",
                 style: TextStyle(
-                  color: Colors.white,
+                  color: _theme.textPrimary,
                   fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 0.5,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.5,
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
               Text(
                 _step == 1
-                    ? "Enter your secret key to step inside"
-                    : "Set your nickname for this space",
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: Colors.white60,
-                  fontSize: 14,
-                ),
+                    ? "paste it below and let's go"
+                    : "pick a name — make it fun",
+                style: TextStyle(color: _theme.textSecondary, fontSize: 14),
               ),
-              const SizedBox(height: 32),
+              const SizedBox(height: 36),
 
-              // Card Container
-              Container(
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1E293B).withOpacity(0.95),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: Colors.white.withOpacity(0.1),
+              // Input area
+              if (_step == 1) ...[
+                TextField(
+                  controller: _keyController,
+                  style: TextStyle(
+                    color: _theme.textPrimary,
+                    fontFamily: 'monospace',
+                    fontWeight: FontWeight.w700,
+                    fontSize: 16,
+                    letterSpacing: 1.5,
                   ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.35),
-                      blurRadius: 20,
-                      offset: const Offset(0, 10),
+                  textCapitalization: TextCapitalization.characters,
+                  textAlign: TextAlign.center,
+                  onSubmitted: (_) => _handleValidateKey(),
+                  decoration: InputDecoration(
+                    filled: true,
+                    fillColor: _theme.surface,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide.none,
                     ),
-                  ],
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide(color: accent.withOpacity(0.5), width: 1.5),
+                    ),
+                  ),
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    if (_step == 1) ...[
-                      // STEP 1: Key Input (No Placeholders)
-                      const Text(
-                        "Key Here!",
+              ] else ...[
+                // Verified key chip
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: accent.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(30),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.check_rounded, size: 16, color: accent),
+                      const SizedBox(width: 6),
+                      Text(
+                        _validatedKeyInfo?.key ?? "",
                         style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 15,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      TextField(
-                        controller: _keyController,
-                        style: const TextStyle(
-                          color: Colors.white,
+                          color: accent,
                           fontFamily: 'monospace',
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 1.1,
-                          fontSize: 16,
-                        ),
-                        textCapitalization: TextCapitalization.characters,
-                        onSubmitted: (_) => _handleValidateKey(),
-                        decoration: InputDecoration(
-                          prefixIcon: const Icon(Icons.key, color: Color(0xFF6366F1)),
-                          filled: true,
-                          fillColor: const Color(0xFF0F172A),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide.none,
-                          ),
-                        ),
-                      ),
-                    ] else ...[
-                      // STEP 2: Nickname Input (No Placeholders)
-                      Row(
-                        children: [
-                          const Icon(Icons.check_circle_outline, color: Color(0xFF34D399), size: 20),
-                          const SizedBox(width: 8),
-                          Text(
-                            "Key: ${_validatedKeyInfo?.key}",
-                            style: const TextStyle(
-                              color: Color(0xFF34D399),
-                              fontFamily: 'monospace',
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 18),
-                      const Text(
-                        "Set your nickname",
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 15,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      TextField(
-                        controller: _nicknameController,
-                        style: const TextStyle(color: Colors.white, fontSize: 15),
-                        onSubmitted: (_) => _handleCompleteLogin(),
-                        decoration: InputDecoration(
-                          prefixIcon: const Icon(Icons.person_outline, color: Color(0xFF6366F1)),
-                          filled: true,
-                          fillColor: const Color(0xFF0F172A),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide.none,
-                          ),
+                          fontWeight: FontWeight.w600,
+                          fontSize: 12,
                         ),
                       ),
                     ],
-
-                    if (_errorMessage != null) ...[
-                      const SizedBox(height: 16),
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: Colors.redAccent.withOpacity(0.15),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.redAccent.withOpacity(0.3)),
-                        ),
-                        child: Text(
-                          _errorMessage!,
-                          style: const TextStyle(color: Colors.redAccent, fontSize: 13),
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                    ],
-
-                    const SizedBox(height: 24),
-
-                    // Submit Button
-                    ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF6366F1),
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        elevation: 4,
-                      ),
-                      onPressed: _isLoading
-                          ? null
-                          : (_step == 1 ? _handleValidateKey : _handleCompleteLogin),
-                      child: _isLoading
-                          ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : Text(
-                              _step == 1 ? "Unlock" : "Let's Go!",
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                TextField(
+                  controller: _nicknameController,
+                  style: TextStyle(
+                    color: _theme.textPrimary,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  textAlign: TextAlign.center,
+                  autofocus: true,
+                  onSubmitted: (_) => _handleCompleteLogin(),
+                  decoration: InputDecoration(
+                    filled: true,
+                    fillColor: _theme.surface,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide.none,
                     ),
-                  ],
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide(color: accent.withOpacity(0.5), width: 1.5),
+                    ),
+                  ),
+                ),
+              ],
+
+              // Error
+              if (_errorMessage != null) ...[
+                const SizedBox(height: 14),
+                Text(
+                  _errorMessage!,
+                  style: const TextStyle(color: Color(0xFFFF6F6F), fontSize: 13),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+
+              const SizedBox(height: 24),
+
+              // Button
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: accent,
+                    padding: const EdgeInsets.symmetric(vertical: 18),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  onPressed: _isLoading
+                      ? null
+                      : (_step == 1 ? _handleValidateKey : _handleCompleteLogin),
+                  child: _isLoading
+                      ? SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: _theme.textPrimary,
+                          ),
+                        )
+                      : Text(
+                          _step == 1 ? "unlock →" : "let's go! →",
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
                 ),
               ),
 
-              const SizedBox(height: 20),
-              const Text(
-                "Your key stays active on this device until you log out.",
-                style: TextStyle(color: Colors.white38, fontSize: 12),
+              const SizedBox(height: 32),
+              Text(
+                "your key stays saved on this device",
+                style: TextStyle(color: _theme.textMuted, fontSize: 11),
               ),
             ],
           ),

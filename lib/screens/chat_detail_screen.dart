@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/user_profile.dart';
 import '../services/chat_service.dart';
+import '../services/theme_service.dart';
 import '../widgets/chat_bubble.dart';
 
 class ChatDetailScreen extends StatefulWidget {
@@ -21,18 +22,24 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   final _messageController = TextEditingController();
   final _scrollController = ScrollController();
   final _chatService = ChatService();
+  final _theme = ThemeService();
+  final _focusNode = FocusNode();
 
   @override
   void initState() {
     super.initState();
     _chatService.addListener(_onChatUpdated);
+    _theme.addListener(_onChatUpdated);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
   }
 
   @override
   void dispose() {
     _chatService.removeListener(_onChatUpdated);
+    _theme.removeListener(_onChatUpdated);
     _messageController.dispose();
     _scrollController.dispose();
+    _focusNode.dispose();
     super.dispose();
   }
 
@@ -48,7 +55,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       if (_scrollController.hasClients) {
         _scrollController.animateTo(
           _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 250),
+          duration: const Duration(milliseconds: 200),
           curve: Curves.easeOut,
         );
       }
@@ -65,60 +72,89 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     );
 
     _messageController.clear();
+    _focusNode.requestFocus();
     _scrollToBottom();
   }
 
   @override
   Widget build(BuildContext context) {
     final messages = _chatService.getConversationWith(widget.peerUser.id);
+    final accent = _theme.primary;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0F172A),
+      backgroundColor: _theme.bg,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF1E293B),
-        elevation: 1,
+        backgroundColor: _theme.bg,
+        elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          icon: const Icon(Icons.arrow_back_rounded),
           onPressed: () => Navigator.pop(context),
         ),
+        titleSpacing: 0,
         title: Row(
           children: [
-            CircleAvatar(
-              backgroundColor: const Color(0xFF6366F1),
-              radius: 18,
-              child: Text(
-                widget.peerUser.nickname.isNotEmpty ? widget.peerUser.nickname[0].toUpperCase() : "?",
-                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: accent.withOpacity(0.12),
+                shape: BoxShape.circle,
+              ),
+              child: Center(
+                child: Text(
+                  widget.peerUser.nickname.isNotEmpty
+                      ? widget.peerUser.nickname[0].toUpperCase()
+                      : "?",
+                  style: TextStyle(
+                    color: accent,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 15,
+                  ),
+                ),
               ),
             ),
             const SizedBox(width: 10),
             Text(
               widget.peerUser.nickname,
-              style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                color: _theme.textPrimary,
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ],
         ),
       ),
       body: Column(
         children: [
+          // Thin accent divider
+          Container(
+            height: 1,
+            color: accent.withOpacity(0.08),
+          ),
+
+          // Messages
           Expanded(
             child: messages.isEmpty
                 ? Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const Icon(Icons.chat_bubble_outline, size: 48, color: Colors.white24),
-                        const SizedBox(height: 12),
+                        Text("💬", style: const TextStyle(fontSize: 40)),
+                        const SizedBox(height: 10),
                         Text(
-                          "No messages yet with ${widget.peerUser.nickname}.",
-                          style: const TextStyle(color: Colors.white38, fontSize: 14),
+                          "say something!",
+                          style: TextStyle(
+                            color: _theme.textSecondary,
+                            fontSize: 14,
+                          ),
                         ),
                       ],
                     ),
                   )
                 : ListView.builder(
                     controller: _scrollController,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    padding: const EdgeInsets.symmetric(vertical: 16),
                     itemCount: messages.length,
                     itemBuilder: (context, index) {
                       final msg = messages[index];
@@ -127,26 +163,40 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                     },
                   ),
           ),
+
+          // Input bar
           Container(
-            padding: const EdgeInsets.all(12),
-            decoration: const BoxDecoration(
-              color: Color(0xFF1E293B),
-              border: Border(top: BorderSide(color: Colors.white10)),
+            padding: EdgeInsets.only(
+              left: 16,
+              right: 8,
+              top: 10,
+              bottom: MediaQuery.of(context).padding.bottom + 10,
+            ),
+            decoration: BoxDecoration(
+              color: _theme.bg,
+              border: Border(
+                top: BorderSide(color: _theme.divider),
+              ),
             ),
             child: Row(
               children: [
                 Expanded(
                   child: TextField(
                     controller: _messageController,
-                    style: const TextStyle(color: Colors.white),
+                    focusNode: _focusNode,
+                    style: TextStyle(
+                      color: _theme.textPrimary,
+                      fontSize: 14,
+                    ),
                     textInputAction: TextInputAction.send,
                     onSubmitted: (_) => _sendMessage(),
                     decoration: InputDecoration(
-                      hintText: "Type a message...",
-                      hintStyle: const TextStyle(color: Colors.white30),
+                      hintText: "type something...",
+                      hintStyle: TextStyle(color: _theme.textMuted),
                       filled: true,
-                      fillColor: const Color(0xFF0F172A),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      fillColor: _theme.surface,
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 18, vertical: 12),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(24),
                         borderSide: BorderSide.none,
@@ -154,13 +204,23 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(width: 8),
-                CircleAvatar(
-                  backgroundColor: const Color(0xFF6366F1),
-                  radius: 22,
-                  child: IconButton(
-                    icon: const Icon(Icons.send_rounded, color: Colors.white, size: 18),
-                    onPressed: _sendMessage,
+                const SizedBox(width: 6),
+                GestureDetector(
+                  onTap: _sendMessage,
+                  child: Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: accent,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Center(
+                      child: Icon(
+                        Icons.arrow_upward_rounded,
+                        color: Colors.white,
+                        size: 20,
+                      ),
+                    ),
                   ),
                 ),
               ],

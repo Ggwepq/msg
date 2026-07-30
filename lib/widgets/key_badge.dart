@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import '../models/access_key.dart';
+import '../services/theme_service.dart';
 
 class KeyBadge extends StatelessWidget {
   final AccessKey accessKey;
@@ -15,89 +16,60 @@ class KeyBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final createdStr = DateFormat('MMM d, h:mm a').format(accessKey.createdAt);
+    final theme = ThemeService();
+    final accent = theme.primary;
+    final createdStr = DateFormat('MMM d').format(accessKey.createdAt);
 
     return Container(
-      margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 16),
-      padding: const EdgeInsets.all(14),
+      margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 16),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E293B),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: accessKey.isClaimed
-              ? const Color(0xFF10B981).withOpacity(0.4)
-              : Colors.indigo.withOpacity(0.3),
-        ),
+        color: theme.surface,
+        borderRadius: BorderRadius.circular(16),
       ),
       child: Row(
         children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: accessKey.isClaimed
-                  ? const Color(0xFF10B981).withOpacity(0.15)
-                  : Colors.indigo.withOpacity(0.15),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              accessKey.isClaimed ? Icons.check_circle_outline : Icons.vpn_key,
-              color: accessKey.isClaimed ? const Color(0xFF34D399) : Colors.indigoAccent,
-              size: 20,
-            ),
-          ),
-          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 SelectableText(
                   accessKey.key,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
+                  style: TextStyle(
+                    color: theme.textPrimary,
                     fontFamily: 'monospace',
-                    fontSize: 15,
-                    letterSpacing: 1.1,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                    letterSpacing: 0.8,
                   ),
                 ),
                 const SizedBox(height: 4),
-                if (accessKey.isClaimed)
-                  Text(
-                    "Claimed by: ${accessKey.claimedByNickname ?? 'Friend'}",
-                    style: const TextStyle(
-                      color: Color(0xFF34D399),
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  )
-                else
-                  Text(
-                    "Created: $createdStr",
-                    style: const TextStyle(
-                      color: Colors.white54,
-                      fontSize: 11,
-                    ),
+                Text(
+                  accessKey.isClaimed
+                      ? "→ ${accessKey.claimedByNickname ?? 'someone'}"
+                      : "created $createdStr · unclaimed",
+                  style: TextStyle(
+                    color: accessKey.isClaimed
+                        ? accent.withOpacity(0.7)
+                        : theme.textMuted,
+                    fontSize: 12,
                   ),
+                ),
               ],
             ),
           ),
           IconButton(
-            icon: const Icon(Icons.copy, size: 18, color: Colors.white70),
-            tooltip: "Copy Key",
+            icon: Icon(Icons.copy_rounded, size: 18, color: theme.textSecondary),
             onPressed: () {
               Clipboard.setData(ClipboardData(text: accessKey.key));
               ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text("Copied ${accessKey.key} to clipboard"),
-                  duration: const Duration(seconds: 2),
-                ),
+                SnackBar(content: Text("copied ${accessKey.key}")),
               );
             },
           ),
           if (onDelete != null)
             IconButton(
-              icon: const Icon(Icons.delete_outline, size: 18, color: Colors.redAccent),
-              tooltip: "Delete Key",
+              icon: Icon(Icons.close_rounded, size: 18, color: theme.textMuted),
               onPressed: onDelete,
             ),
         ],

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import '../models/access_key.dart';
 import '../services/chat_service.dart';
+import '../services/theme_service.dart';
 import '../widgets/key_badge.dart';
 
 class KeyManagementScreen extends StatefulWidget {
@@ -12,50 +12,63 @@ class KeyManagementScreen extends StatefulWidget {
 
 class _KeyManagementScreenState extends State<KeyManagementScreen> {
   final _chatService = ChatService();
+  final _theme = ThemeService();
   final _customKeyPrefixController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     _chatService.addListener(_onStateChanged);
+    _theme.addListener(_onStateChanged);
   }
 
   @override
   void dispose() {
     _chatService.removeListener(_onStateChanged);
+    _theme.removeListener(_onStateChanged);
     _customKeyPrefixController.dispose();
     super.dispose();
   }
 
   void _onStateChanged() {
-    if (mounted) {
-      setState(() {});
-    }
+    if (mounted) setState(() {});
   }
 
   void _showGenerateKeyDialog() {
     showDialog(
       context: context,
       builder: (context) {
+        final accent = _theme.primary;
+
         return AlertDialog(
-          backgroundColor: const Color(0xFF1E293B),
-          title: const Text("Generate New Access Key", style: TextStyle(color: Colors.white)),
+          backgroundColor: _theme.surface,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Text(
+            "new key",
+            style: TextStyle(
+              color: _theme.textPrimary,
+              fontWeight: FontWeight.w800,
+              fontSize: 18,
+            ),
+          ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                "Optional custom prefix or friend's name:",
-                style: TextStyle(color: Colors.white70, fontSize: 13),
+              Text(
+                "optional prefix (friend's name, etc)",
+                style: TextStyle(color: _theme.textSecondary, fontSize: 13),
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: _customKeyPrefixController,
-                style: const TextStyle(color: Colors.white),
+                style: TextStyle(color: _theme.textPrimary),
                 decoration: InputDecoration(
                   filled: true,
-                  fillColor: const Color(0xFF0F172A),
+                  fillColor: _theme.surfaceLight,
                   border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(12),
                     borderSide: BorderSide.none,
                   ),
                 ),
@@ -65,23 +78,30 @@ class _KeyManagementScreenState extends State<KeyManagementScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text("Cancel", style: TextStyle(color: Colors.white54)),
+              child: Text("nah",
+                  style: TextStyle(color: _theme.textSecondary)),
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF6366F1),
+                backgroundColor: accent,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
               ),
               onPressed: () async {
-                final newKey = await _chatService.generateNewKey(_customKeyPrefixController.text);
+                final newKey = await _chatService
+                    .generateNewKey(_customKeyPrefixController.text);
                 _customKeyPrefixController.clear();
                 if (context.mounted) {
                   Navigator.pop(context);
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text("Generated Key: ${newKey.key}")),
+                    SnackBar(content: Text("created ${newKey.key} 🔑")),
                   );
                 }
               },
-              child: const Text("Generate", style: TextStyle(color: Colors.white)),
+              child: const Text("create",
+                  style: TextStyle(
+                      color: Colors.white, fontWeight: FontWeight.w700)),
             ),
           ],
         );
@@ -92,42 +112,69 @@ class _KeyManagementScreenState extends State<KeyManagementScreen> {
   @override
   Widget build(BuildContext context) {
     final keys = _chatService.keys;
+    final accent = _theme.primary;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0F172A),
+      backgroundColor: _theme.bg,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF1E293B),
-        elevation: 1,
+        backgroundColor: _theme.bg,
+        elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          icon: const Icon(Icons.arrow_back_rounded),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text(
-          "Key Management",
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
+        title: Text(
+          "invite keys",
+          style: TextStyle(
+            color: _theme.textPrimary,
+            fontSize: 20,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.3,
+          ),
         ),
       ),
       body: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: ElevatedButton.icon(
-              onPressed: _showGenerateKeyDialog,
-              icon: const Icon(Icons.add, color: Colors.white),
-              label: const Text("Generate New Access Key", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF6366F1),
-                minimumSize: const Size.fromHeight(50),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+            child: SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _showGenerateKeyDialog,
+                icon: const Icon(Icons.add_rounded, color: Colors.white),
+                label: const Text("generate new key",
+                    style: TextStyle(
+                        color: Colors.white, fontWeight: FontWeight.w700)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: accent,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
               ),
             ),
           ),
           Expanded(
             child: keys.isEmpty
-                ? const Center(
-                    child: Text("No access keys created yet.", style: TextStyle(color: Colors.white38)),
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text("🔐", style: const TextStyle(fontSize: 40)),
+                        const SizedBox(height: 10),
+                        Text(
+                          "no keys yet — create one above",
+                          style: TextStyle(
+                            color: _theme.textSecondary,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
                   )
                 : ListView.builder(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
                     itemCount: keys.length,
                     itemBuilder: (context, index) {
                       final k = keys[index];

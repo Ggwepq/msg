@@ -2,34 +2,49 @@ import 'package:flutter/material.dart';
 import 'screens/chat_list_screen.dart';
 import 'screens/login_screen.dart';
 import 'services/chat_service.dart';
+import 'services/theme_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final chatService = ChatService();
+  final themeService = ThemeService();
   await chatService.init();
+  await themeService.init();
   runApp(const KeyMsgApp());
 }
 
-class KeyMsgApp extends StatelessWidget {
+class KeyMsgApp extends StatefulWidget {
   const KeyMsgApp({super.key});
+
+  @override
+  State<KeyMsgApp> createState() => _KeyMsgAppState();
+}
+
+class _KeyMsgAppState extends State<KeyMsgApp> {
+  final _themeService = ThemeService();
+
+  @override
+  void initState() {
+    super.initState();
+    _themeService.addListener(_onThemeChanged);
+  }
+
+  @override
+  void dispose() {
+    _themeService.removeListener(_onThemeChanged);
+    super.dispose();
+  }
+
+  void _onThemeChanged() {
+    if (mounted) setState(() {});
+  }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Key Private Messaging',
+      title: 'KeyMsg',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        useMaterial3: true,
-        brightness: Brightness.dark,
-        scaffoldBackgroundColor: const Color(0xFF0F172A),
-        colorScheme: const ColorScheme.dark(
-          primary: Color(0xFF6366F1),
-          secondary: Color(0xFF8B5CF6),
-          surface: Color(0xFF1E293B),
-          background: Color(0xFF0F172A),
-        ),
-        fontFamily: 'Roboto',
-      ),
+      theme: _themeService.buildTheme(),
       home: const RootNavigationHandler(),
     );
   }
@@ -58,23 +73,15 @@ class _RootNavigationHandlerState extends State<RootNavigationHandler> {
   }
 
   void _onAuthChanged() {
-    if (mounted) {
-      setState(() {});
-    }
+    if (mounted) setState(() {});
   }
 
   @override
   Widget build(BuildContext context) {
     final user = _chatService.currentUser;
-
     if (user == null) {
-      return LoginScreen(
-        onLoginSuccess: (userProfile) {
-          setState(() {});
-        },
-      );
+      return LoginScreen(onLoginSuccess: (_) => setState(() {}));
     }
-
     return ChatListScreen(currentUser: user);
   }
 }
