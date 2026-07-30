@@ -1,59 +1,27 @@
-# Key-Based Private Messaging App (Flutter)
-
-A lightweight, private 1-on-1 Flutter messaging application designed for personal use after deactivating social media accounts. Hand out unique access keys to selected friends so they can log in, enter their nickname, and start messaging you directly.
-
----
-
-## Features
-
-1. **Invite Key Login System**:
-   - Friends log in by entering an **Access Key** (e.g. `SECRET-ALICE-123`) + their **Nickname**.
-   - No email, phone number, or social media registration required!
-
-2. **Admin Command Center**:
-   - App Owner logs in using the Master Admin Key (`ADMIN-MASTER-88`).
-   - Generate, copy, or delete access keys for specific friends.
-   - View your inbox containing all friends who claimed keys and messaged you.
-   - Reply to any friend in direct 1-on-1 real-time threads.
-
-3. **Modern Glassmorphic Dark UI**:
-   - Sleek dark theme using Tailwind HSL / indigo palette.
-   - Real-time message bubbles, timestamps, read receipts, and user avatars.
-
-4. **Out-of-the-box Ready**:
-   - Includes local persistent state (`SharedPreferences`) so you can test it immediately without initial backend configuration.
-   - Easy integration points for **Firebase Cloud Firestore** or **Supabase Realtime**.
+<div align="center">
+  <img src="assets/img/msg-icon.png" width="130" alt="Msg Logo" />
+  <h1>Msg</h1>
+</div>
 
 ---
 
-## Quick Start (Running Locally)
+### What is Msg? 🤐
 
-```bash
-# Navigate to project directory
-cd /home/cedjuani/Documents/Projects/quick/msg
-
-# Get dependencies
-flutter pub get
-
-# Run on Chrome Web or connected Device/Emulator
-flutter run -d chrome
-```
+**Msg** is an invite-only, key-authenticated private chat space. If someone has a key, they're in. If they don't, they're outside.
 
 ---
 
-## Credentials for Testing
+### The Setup ⚡
 
-- **Sample Friend Keys**:
-  - Key: `SECRET-ALICE-123` (Already claimed by Alice)
-  - Key: `KEY-BOB-999` (Unclaimed, try logging in with nickname "Bob")
-  - Key: `KEY-VIP-FRIEND` (Unclaimed)
-- **Master Admin Key**: `ADMIN-MASTER-88` (Switch to Admin mode on login screen)
+* 🔑 **Key Access Only**: No phone numbers, no emails, no public search. Hand out a key. That's your pass.
+* 🎨 **Accent Modes**: Customize your dark UI with low-key accent colors (Lavender, Mint, Peach, Coral).
+* 📱 **iOS-Style Context**: Long-press messages for quick actions, blur overlays, and tapback reactions (❤️, 😂, 🔥, 👍, 😮, 🚀).
+* 💬 **Media Sharing**: Photos and videos with built-in preview & compression.
 
 ---
 
-## Free Hosting & Deployment Options
+### Access Protocol 🚀
 
-When ready to distribute to your friends:
-1. **Firebase Firestore (Free)**: Run `flutterfire configure` to connect live online syncing.
-2. **Web Build**: Build web app (`flutter build web`) and host 100% free on **Firebase Hosting**, **Vercel**, or **GitHub Pages**.
-3. **Android APK**: Build standard APK (`flutter build apk --release`) to send directly via email or messaging app.
+1. **Get a Key**: Get handed a key code.
+2. **Unlock**: Enter key, pick nickname.
+3. **Talk**: Chat in peace.

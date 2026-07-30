@@ -167,12 +167,17 @@ class _LoginScreenState extends State<LoginScreen>
               child: Container(
                 width: 90,
                 height: 90,
+                padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: accent.withOpacity(0.12),
                 ),
-                child: const Center(
-                  child: Text("🔑", style: TextStyle(fontSize: 40)),
+                child: Image.asset(
+                  'assets/img/msg-icon.png',
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, __, ___) => const Center(
+                    child: Text("🔑", style: TextStyle(fontSize: 40)),
+                  ),
                 ),
               ),
             );
