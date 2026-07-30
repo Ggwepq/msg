@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="assets/img/msg-icon.png" width="130" alt="Msg Logo" />
+  <img src="assets/img/msg-icon-ellipsed.png" width="130" alt="Msg Logo" />
   <h1>Msg</h1>
 </div>
 
