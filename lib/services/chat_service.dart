@@ -15,11 +15,13 @@ class ChatService extends ChangeNotifier {
   static const String adminId = "admin_user_id";
 
   UserProfile? _currentUser;
+  String _adminNickname = "Host";
   final List<AccessKey> _keys = [];
   final List<ChatMessage> _messages = [];
   bool _initialized = false;
 
   UserProfile? get currentUser => _currentUser;
+  String get adminNickname => _adminNickname;
   List<AccessKey> get keys => List.unmodifiable(_keys);
   List<ChatMessage> get messages => List.unmodifiable(_messages);
 
@@ -27,6 +29,12 @@ class ChatService extends ChangeNotifier {
     if (_initialized) return;
     final prefs = await SharedPreferences.getInstance();
     
+    // Load admin nickname
+    final storedAdminName = prefs.getString('admin_nickname');
+    if (storedAdminName != null && storedAdminName.isNotEmpty) {
+      _adminNickname = storedAdminName;
+    }
+
     // Load stored keys
     final keysJson = prefs.getStringList('access_keys');
     if (keysJson != null && keysJson.isNotEmpty) {
@@ -35,7 +43,6 @@ class ChatService extends ChangeNotifier {
         _keys.add(AccessKey.fromJson(jsonDecode(k)));
       }
     } else {
-      // Seed default initial keys for testing
       _seedDefaultKeys();
       await _saveKeys();
     }
@@ -52,7 +59,7 @@ class ChatService extends ChangeNotifier {
       await _saveMessages();
     }
 
-    // Load active session user if any
+    // Load active session user
     final userJson = prefs.getString('current_user');
     if (userJson != null) {
       _currentUser = UserProfile.fromJson(jsonDecode(userJson));
@@ -92,38 +99,71 @@ class ChatService extends ChangeNotifier {
         senderId: "user_alice",
         senderNickname: "Alice",
         receiverId: adminId,
-        text: "Hey! Glad I got your invite key. How are you doing after deactivating FB?",
+        text: "Hey! Glad I got your invite key. How are you doing?",
         timestamp: DateTime.now().subtract(const Duration(hours: 2)),
       ),
       ChatMessage(
         id: "msg_2",
         senderId: adminId,
-        senderNickname: "You (Admin)",
+        senderNickname: _adminNickname,
         receiverId: "user_alice",
-        text: "Hey Alice! Feeling much better without all the FB noise. Glad you made it here!",
+        text: "Hey Alice! Welcome to our private messaging space!",
         timestamp: DateTime.now().subtract(const Duration(hours: 1, minutes: 45)),
       ),
     ]);
   }
 
-  // Login via Access Key & Nickname
-  Future<UserProfile> loginWithKey({
-    required String keyInput,
-    required String nickname,
-  }) async {
-    final cleanKey = keyInput.trim().toUpperCase();
-    final cleanNickname = nickname.trim();
-
-    if (cleanNickname.isEmpty) {
-      throw Exception("Please provide a nickname/name.");
+  // Validate Key
+  AccessKeyValidation validateKey(String rawKey) {
+    final cleanKey = rawKey.trim().toUpperCase();
+    if (cleanKey.isEmpty) {
+      throw Exception("Please enter your key.");
     }
 
-    // Check Admin Master Key
+    // Check Master Key
     if (cleanKey == adminMasterKey) {
+      return AccessKeyValidation(
+        key: adminMasterKey,
+        isMasterKey: true,
+        existingNickname: _adminNickname != "Host" ? _adminNickname : null,
+      );
+    }
+
+    final keyIndex = _keys.indexWhere((k) => k.key.toUpperCase() == cleanKey);
+    if (keyIndex == -1) {
+      throw Exception("Key not recognized. Please check your key!");
+    }
+
+    final matchedKey = _keys[keyIndex];
+    return AccessKeyValidation(
+      key: matchedKey.key,
+      isMasterKey: false,
+      existingNickname: matchedKey.claimedByNickname,
+    );
+  }
+
+  // Complete Login
+  Future<UserProfile> completeLogin({
+    required String keyInput,
+    String? nickname,
+  }) async {
+    final cleanKey = keyInput.trim().toUpperCase();
+    final prefs = await SharedPreferences.getInstance();
+
+    // Check Master Key
+    if (cleanKey == adminMasterKey) {
+      final nameToUse = (nickname != null && nickname.trim().isNotEmpty)
+          ? nickname.trim()
+          : _adminNickname;
+
+      _adminNickname = nameToUse;
+      await prefs.setString('admin_nickname', nameToUse);
+
       final adminProfile = UserProfile(
         id: adminId,
-        nickname: "Admin (You)",
+        nickname: nameToUse,
         role: UserRole.admin,
+        accessKey: adminMasterKey,
         lastSeen: DateTime.now(),
       );
       _currentUser = adminProfile;
@@ -132,35 +172,91 @@ class ChatService extends ChangeNotifier {
       return adminProfile;
     }
 
-    // Validate Friend Key
+    // Friend Key
     final keyIndex = _keys.indexWhere((k) => k.key.toUpperCase() == cleanKey);
     if (keyIndex == -1) {
-      throw Exception("Invalid Access Key. Please check with the app owner.");
+      throw Exception("Key invalid.");
     }
 
     final matchedKey = _keys[keyIndex];
+    final existingNickname = matchedKey.claimedByNickname;
 
-    // If key is already claimed by someone else with different user ID
-    final existingUserId = matchedKey.claimedByUserId ?? "user_${cleanNickname.toLowerCase().replaceAll(' ', '_')}_${DateTime.now().millisecondsSinceEpoch}";
+    final finalNickname = (existingNickname != null && existingNickname.isNotEmpty)
+        ? existingNickname
+        : (nickname ?? "").trim();
+
+    if (finalNickname.isEmpty) {
+      throw Exception("Please set your nickname.");
+    }
+
+    final userId = matchedKey.claimedByUserId ??
+        "user_${finalNickname.toLowerCase().replaceAll(' ', '_')}_${DateTime.now().millisecondsSinceEpoch}";
 
     matchedKey.isClaimed = true;
-    matchedKey.claimedByUserId = existingUserId;
-    matchedKey.claimedByNickname = cleanNickname;
+    matchedKey.claimedByUserId = userId;
+    matchedKey.claimedByNickname = finalNickname;
     matchedKey.claimedAt ??= DateTime.now();
 
-    final friendProfile = UserProfile(
-      id: existingUserId,
-      nickname: cleanNickname,
+    final userProfile = UserProfile(
+      id: userId,
+      nickname: finalNickname,
       role: UserRole.friend,
       accessKey: matchedKey.key,
       lastSeen: DateTime.now(),
     );
 
-    _currentUser = friendProfile;
+    _currentUser = userProfile;
     await _saveKeys();
-    await _saveUserSession(friendProfile);
+    await _saveUserSession(userProfile);
     notifyListeners();
-    return friendProfile;
+    return userProfile;
+  }
+
+  // Update current user's nickname dynamically across app & message history
+  Future<void> updateNickname(String newNickname) async {
+    if (_currentUser == null) return;
+    final cleanName = newNickname.trim();
+    if (cleanName.isEmpty) return;
+
+    final prefs = await SharedPreferences.getInstance();
+
+    _currentUser = UserProfile(
+      id: _currentUser!.id,
+      nickname: cleanName,
+      role: _currentUser!.role,
+      accessKey: _currentUser!.accessKey,
+      lastSeen: DateTime.now(),
+    );
+
+    if (_currentUser!.role == UserRole.admin) {
+      _adminNickname = cleanName;
+      await prefs.setString('admin_nickname', cleanName);
+    } else if (_currentUser!.accessKey != null) {
+      final keyIndex = _keys.indexWhere((k) => k.key == _currentUser!.accessKey);
+      if (keyIndex != -1) {
+        _keys[keyIndex].claimedByNickname = cleanName;
+        await _saveKeys();
+      }
+    }
+
+    // Update sender nickname in message history
+    for (int i = 0; i < _messages.length; i++) {
+      if (_messages[i].senderId == _currentUser!.id) {
+        _messages[i] = ChatMessage(
+          id: _messages[i].id,
+          senderId: _messages[i].senderId,
+          senderNickname: cleanName,
+          receiverId: _messages[i].receiverId,
+          text: _messages[i].text,
+          timestamp: _messages[i].timestamp,
+          isRead: _messages[i].isRead,
+        );
+      }
+    }
+    await _saveMessages();
+
+    await _saveUserSession(_currentUser!);
+    notifyListeners();
   }
 
   // Logout
@@ -171,10 +267,10 @@ class ChatService extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Generate new access key (Admin only)
+  // Generate new key
   Future<AccessKey> generateNewKey([String? customPrefix]) async {
-    final prefix = (customPrefix != null && customPrefix.isNotEmpty)
-        ? customPrefix.toUpperCase().replaceAll(' ', '-')
+    final prefix = (customPrefix != null && customPrefix.trim().isNotEmpty)
+        ? customPrefix.trim().toUpperCase().replaceAll(' ', '-')
         : "KEY";
     final randomSuffix = (1000 + (DateTime.now().microsecondsSinceEpoch % 9000)).toString();
     final newKeyCode = "$prefix-$randomSuffix";
@@ -190,14 +286,14 @@ class ChatService extends ChangeNotifier {
     return newKey;
   }
 
-  // Delete Access Key (Admin only)
+  // Delete key
   Future<void> deleteKey(String keyCode) async {
     _keys.removeWhere((k) => k.key == keyCode);
     await _saveKeys();
     notifyListeners();
   }
 
-  // Send a message
+  // Send message
   Future<void> sendMessage({
     required String text,
     required String receiverId,
@@ -219,50 +315,80 @@ class ChatService extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Get conversation messages between current user and a friend
+  // Get conversation with another user
   List<ChatMessage> getConversationWith(String otherUserId) {
     if (_currentUser == null) return [];
     
     return _messages.where((m) {
-      final isBetween = (m.senderId == _currentUser!.id && m.receiverId == otherUserId) ||
+      return (m.senderId == _currentUser!.id && m.receiverId == otherUserId) ||
           (m.senderId == otherUserId && m.receiverId == _currentUser!.id);
-      return isBetween;
     }).toList()
       ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
   }
 
-  // Get list of friends who have chatted or claimed keys (for Admin view)
-  List<UserProfile> getActiveFriendList() {
-    final Map<String, UserProfile> friendsMap = {};
+  // Get list of conversations for current user
+  List<UserProfile> getAvailableChats() {
+    if (_currentUser == null) return [];
 
-    for (var key in _keys) {
-      if (key.isClaimed && key.claimedByUserId != null) {
-        friendsMap[key.claimedByUserId!] = UserProfile(
-          id: key.claimedByUserId!,
-          nickname: key.claimedByNickname ?? "Friend",
-          role: UserRole.friend,
-          accessKey: key.key,
-          lastSeen: key.claimedAt ?? DateTime.now(),
-        );
+    if (_currentUser!.role == UserRole.admin) {
+      final Map<String, UserProfile> friendsMap = {};
+
+      for (var key in _keys) {
+        if (key.isClaimed && key.claimedByUserId != null) {
+          friendsMap[key.claimedByUserId!] = UserProfile(
+            id: key.claimedByUserId!,
+            nickname: key.claimedByNickname ?? "Friend",
+            role: UserRole.friend,
+            accessKey: key.key,
+            lastSeen: key.claimedAt ?? DateTime.now(),
+          );
+        }
       }
-    }
 
-    // Add any users present in message history
-    for (var m in _messages) {
-      if (m.senderId != adminId && !friendsMap.containsKey(m.senderId)) {
-        friendsMap[m.senderId] = UserProfile(
-          id: m.senderId,
-          nickname: m.senderNickname,
-          role: UserRole.friend,
-          lastSeen: m.timestamp,
-        );
+      for (var m in _messages) {
+        if (m.senderId != adminId && !friendsMap.containsKey(m.senderId)) {
+          friendsMap[m.senderId] = UserProfile(
+            id: m.senderId,
+            nickname: m.senderNickname,
+            role: UserRole.friend,
+            lastSeen: m.timestamp,
+          );
+        }
       }
-    }
 
-    return friendsMap.values.toList();
+      return friendsMap.values.toList();
+    } else {
+      // Dynamic Admin profile using stored _adminNickname
+      final List<UserProfile> chats = [
+        UserProfile(
+          id: adminId,
+          nickname: _adminNickname,
+          role: UserRole.admin,
+          accessKey: adminMasterKey,
+          lastSeen: DateTime.now(),
+        ),
+      ];
+
+      for (var key in _keys) {
+        if (key.isClaimed &&
+            key.claimedByUserId != null &&
+            key.claimedByUserId != _currentUser!.id) {
+          chats.add(
+            UserProfile(
+              id: key.claimedByUserId!,
+              nickname: key.claimedByNickname ?? "Friend",
+              role: UserRole.friend,
+              accessKey: key.key,
+              lastSeen: key.claimedAt ?? DateTime.now(),
+            ),
+          );
+        }
+      }
+
+      return chats;
+    }
   }
 
-  // Persistence helpers
   Future<void> _saveKeys() async {
     final prefs = await SharedPreferences.getInstance();
     final jsonList = _keys.map((k) => jsonEncode(k.toJson())).toList();
@@ -279,4 +405,16 @@ class ChatService extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('current_user', jsonEncode(user.toJson()));
   }
+}
+
+class AccessKeyValidation {
+  final String key;
+  final bool isMasterKey;
+  final String? existingNickname;
+
+  AccessKeyValidation({
+    required this.key,
+    required this.isMasterKey,
+    this.existingNickname,
+  });
 }

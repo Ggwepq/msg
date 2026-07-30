@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
-import 'models/user_profile.dart';
-import 'screens/admin_dashboard_screen.dart';
-import 'screens/friend_chat_screen.dart';
+import 'screens/chat_list_screen.dart';
 import 'screens/login_screen.dart';
 import 'services/chat_service.dart';
 
@@ -77,10 +75,6 @@ class _RootNavigationHandlerState extends State<RootNavigationHandler> {
       );
     }
 
-    if (user.role == UserRole.admin) {
-      return const AdminDashboardScreen();
-    }
-
-    return FriendChatScreen(currentUser: user);
+    return ChatListScreen(currentUser: user);
   }
 }

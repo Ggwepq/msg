@@ -14,9 +14,11 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final _keyController = TextEditingController();
   final _nicknameController = TextEditingController();
-  bool _isAdminMode = false;
+
+  int _step = 1;
   bool _isLoading = false;
   String? _errorMessage;
+  AccessKeyValidation? _validatedKeyInfo;
 
   @override
   void dispose() {
@@ -25,7 +27,47 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  Future<void> _handleLogin() async {
+  Future<void> _handleValidateKey() async {
+    setState(() {
+      _errorMessage = null;
+    });
+
+    try {
+      final chatService = ChatService();
+      final validated = chatService.validateKey(_keyController.text);
+
+      _validatedKeyInfo = validated;
+
+      // If key ALREADY has a nickname, log in directly without asking!
+      if (validated.existingNickname != null && validated.existingNickname!.isNotEmpty) {
+        setState(() {
+          _isLoading = true;
+        });
+
+        final user = await chatService.completeLogin(
+          keyInput: validated.key,
+          nickname: validated.existingNickname,
+        );
+
+        widget.onLoginSuccess(user);
+        return;
+      }
+
+      // New key without nickname -> move to step 2
+      setState(() {
+        _step = 2;
+      });
+    } catch (e) {
+      setState(() {
+        _errorMessage = e.toString().replaceAll("Exception: ", "");
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _handleCompleteLogin() async {
+    if (_validatedKeyInfo == null) return;
+
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -33,12 +75,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       final chatService = ChatService();
-      final keyToUse = _isAdminMode ? ChatService.adminMasterKey : _keyController.text;
-      final nameToUse = _isAdminMode ? "Admin" : _nicknameController.text;
-
-      final user = await chatService.loginWithKey(
-        keyInput: keyToUse,
-        nickname: nameToUse,
+      final user = await chatService.completeLogin(
+        keyInput: _validatedKeyInfo!.key,
+        nickname: _nicknameController.text,
       );
 
       widget.onLoginSuccess(user);
@@ -57,8 +96,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
     return Scaffold(
       backgroundColor: const Color(0xFF0F172A),
       body: Center(
@@ -67,66 +104,63 @@ class _LoginScreenState extends State<LoginScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Logo Header
+              // Logo
               Container(
-                padding: const EdgeInsets.all(20),
+                padding: const EdgeInsets.all(22),
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  gradient: LinearGradient(
-                    colors: [
-                      const Color(0xFF6366F1),
-                      const Color(0xFF8B5CF6).withOpacity(0.8),
-                    ],
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
                   ),
                   boxShadow: [
                     BoxShadow(
                       color: const Color(0xFF6366F1).withOpacity(0.4),
-                      blurRadius: 20,
+                      blurRadius: 24,
                       spreadRadius: 2,
                     ),
                   ],
                 ),
                 child: const Icon(
                   Icons.vpn_key_rounded,
-                  size: 44,
+                  size: 46,
                   color: Colors.white,
                 ),
               ),
               const SizedBox(height: 24),
               const Text(
-                "Private Key Message",
+                "Welcome!",
                 style: TextStyle(
                   color: Colors.white,
-                  fontSize: 26,
+                  fontSize: 28,
                   fontWeight: FontWeight.bold,
                   letterSpacing: 0.5,
                 ),
               ),
               const SizedBox(height: 8),
               Text(
-                _isAdminMode
-                    ? "Log in with Master Admin Key"
-                    : "Enter your invite key & nickname to chat",
+                _step == 1
+                    ? "Enter your secret key to step inside"
+                    : "Set your nickname for this space",
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                   color: Colors.white60,
                   fontSize: 14,
                 ),
               ),
-              const SizedBox(height: 36),
+              const SizedBox(height: 32),
 
-              // Glassmorphic Card
+              // Card Container
               Container(
                 padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1E293B).withOpacity(0.9),
+                  color: const Color(0xFF1E293B).withOpacity(0.95),
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
                     color: Colors.white.withOpacity(0.1),
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.3),
+                      color: Colors.black.withOpacity(0.35),
                       blurRadius: 20,
                       offset: const Offset(0, 10),
                     ),
@@ -135,23 +169,30 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    if (!_isAdminMode) ...[
+                    if (_step == 1) ...[
+                      // STEP 1: Key Input (No Placeholders)
                       const Text(
-                        "Your Nickname",
+                        "Key Here!",
                         style: TextStyle(
-                          color: Colors.white70,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 10),
                       TextField(
-                        controller: _nicknameController,
-                        style: const TextStyle(color: Colors.white),
+                        controller: _keyController,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontFamily: 'monospace',
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 1.1,
+                          fontSize: 16,
+                        ),
+                        textCapitalization: TextCapitalization.characters,
+                        onSubmitted: (_) => _handleValidateKey(),
                         decoration: InputDecoration(
-                          hintText: "e.g. Alice",
-                          hintStyle: const TextStyle(color: Colors.white30),
-                          prefixIcon: const Icon(Icons.person_outline, color: Colors.indigoAccent),
+                          prefixIcon: const Icon(Icons.key, color: Color(0xFF6366F1)),
                           filled: true,
                           fillColor: const Color(0xFF0F172A),
                           border: OutlineInputBorder(
@@ -160,34 +201,48 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         ),
                       ),
-                      const SizedBox(height: 20),
-                    ],
-
-                    Text(
-                      _isAdminMode ? "Master Admin Key" : "Invite Access Key",
-                      style: const TextStyle(
-                        color: Colors.white70,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
+                    ] else ...[
+                      // STEP 2: Nickname Input (No Placeholders)
+                      Row(
+                        children: [
+                          const Icon(Icons.check_circle_outline, color: Color(0xFF34D399), size: 20),
+                          const SizedBox(width: 8),
+                          Text(
+                            "Key: ${_validatedKeyInfo?.key}",
+                            style: const TextStyle(
+                              color: Color(0xFF34D399),
+                              fontFamily: 'monospace',
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: _keyController,
-                      style: const TextStyle(color: Colors.white, fontFamily: 'monospace'),
-                      textCapitalization: TextCapitalization.characters,
-                      decoration: InputDecoration(
-                        hintText: _isAdminMode ? "ADMIN-MASTER-88" : "e.g. SECRET-ALICE-123",
-                        hintStyle: const TextStyle(color: Colors.white30),
-                        prefixIcon: const Icon(Icons.key, color: Colors.indigoAccent),
-                        filled: true,
-                        fillColor: const Color(0xFF0F172A),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide.none,
+                      const SizedBox(height: 18),
+                      const Text(
+                        "Set your nickname",
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
-                    ),
+                      const SizedBox(height: 10),
+                      TextField(
+                        controller: _nicknameController,
+                        style: const TextStyle(color: Colors.white, fontSize: 15),
+                        onSubmitted: (_) => _handleCompleteLogin(),
+                        decoration: InputDecoration(
+                          prefixIcon: const Icon(Icons.person_outline, color: Color(0xFF6366F1)),
+                          filled: true,
+                          fillColor: const Color(0xFF0F172A),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
+                        ),
+                      ),
+                    ],
 
                     if (_errorMessage != null) ...[
                       const SizedBox(height: 16),
@@ -206,11 +261,10 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ],
 
-                    const SizedBox(height: 28),
+                    const SizedBox(height: 24),
 
                     // Submit Button
                     ElevatedButton(
-                      onPressed: _isLoading ? null : _handleLogin,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF6366F1),
                         foregroundColor: Colors.white,
@@ -220,6 +274,9 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         elevation: 4,
                       ),
+                      onPressed: _isLoading
+                          ? null
+                          : (_step == 1 ? _handleValidateKey : _handleCompleteLogin),
                       child: _isLoading
                           ? const SizedBox(
                               height: 20,
@@ -230,7 +287,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               ),
                             )
                           : Text(
-                              _isAdminMode ? "Enter Admin Dashboard" : "Enter Chat",
+                              _step == 1 ? "Unlock" : "Let's Go!",
                               style: const TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.bold,
@@ -241,25 +298,10 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ),
 
-              const SizedBox(height: 24),
-
-              // Toggle Mode Switcher
-              TextButton(
-                onPressed: () {
-                  setState(() {
-                    _isAdminMode = !_isAdminMode;
-                    _errorMessage = null;
-                  });
-                },
-                child: Text(
-                  _isAdminMode
-                      ? "← Back to Friend Login"
-                      : "Are you the App Owner? Switch to Admin Login",
-                  style: const TextStyle(
-                    color: Colors.indigoAccent,
-                    fontSize: 13,
-                  ),
-                ),
+              const SizedBox(height: 20),
+              const Text(
+                "Your key stays active on this device until you log out.",
+                style: TextStyle(color: Colors.white38, fontSize: 12),
               ),
             ],
           ),
