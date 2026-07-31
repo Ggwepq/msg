@@ -160,11 +160,19 @@ class _MessageContextMenuState extends State<MessageContextMenu>
         ? clampedTop - 8
         : clampedTop + targetHeight + 8;
 
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, child) {
-        return Stack(
-          children: [
+    return DefaultTextStyle(
+      style: TextStyle(
+        decoration: TextDecoration.none,
+        color: _theme.textPrimary,
+        fontFamily: Theme.of(context).textTheme.bodyMedium?.fontFamily,
+      ),
+      child: Material(
+        type: MaterialType.transparency,
+        child: AnimatedBuilder(
+          animation: _controller,
+          builder: (context, child) {
+            return Stack(
+              children: [
             // Blurred + dimmed background — tap to dismiss
             GestureDetector(
               onTap: _dismiss,
@@ -306,7 +314,9 @@ class _MessageContextMenuState extends State<MessageContextMenu>
           ],
         );
       },
-    );
+    ),
+  ),
+);
   }
 
   Widget _buildMenu(Color accent) {
