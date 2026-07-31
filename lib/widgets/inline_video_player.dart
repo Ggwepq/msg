@@ -5,10 +5,12 @@ import 'package:video_player/video_player.dart';
 
 class InlineVideoPlayer extends StatefulWidget {
   final String videoPath;
+  final VoidCallback? onOpenFullScreen;
 
   const InlineVideoPlayer({
     super.key,
     required this.videoPath,
+    this.onOpenFullScreen,
   });
 
   @override
@@ -97,53 +99,57 @@ class _InlineVideoPlayerState extends State<InlineVideoPlayer> {
 
   @override
   Widget build(BuildContext context) {
-    // If video player engine cannot play natively on host OS (e.g. missing desktop codecs), render a sleek Video Card fallback!
+    // If video player engine cannot play natively on host OS (e.g. missing desktop codecs), render a 1:1 Video Card fallback
     if (_hasError || _controller == null) {
       final fileName = widget.videoPath.split('/').last;
-      return Container(
-        height: 160,
-        margin: const EdgeInsets.only(bottom: 6),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: const Color(0xFF24243A),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: Colors.white.withOpacity(0.08)),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 52,
-              height: 52,
-              decoration: BoxDecoration(
-                color: const Color(0xFF6366F1).withOpacity(0.2),
-                shape: BoxShape.circle,
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: widget.onOpenFullScreen,
+        child: Container(
+          width: 200,
+          height: 200,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color(0xFF24243A),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF6366F1).withOpacity(0.2),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.movie_creation_outlined, color: Color(0xFF6366F1), size: 28),
               ),
-              child: const Icon(Icons.movie_creation_outlined, color: Color(0xFF6366F1), size: 28),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              fileName.length > 25 ? "${fileName.substring(0, 22)}..." : fileName,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 4),
-            const Text(
-              "Video File Attached",
-              style: TextStyle(color: Colors.white38, fontSize: 11),
-            ),
-          ],
+              const SizedBox(height: 10),
+              Text(
+                fileName.length > 20 ? "${fileName.substring(0, 17)}..." : fileName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                "Video File Attached",
+                style: TextStyle(color: Colors.white38, fontSize: 11),
+              ),
+            ],
+          ),
         ),
       );
     }
 
     if (!_isInitialized) {
       return Container(
-        height: 160,
+        width: 200,
+        height: 200,
         decoration: BoxDecoration(
           color: const Color(0xFF24243A),
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(16),
         ),
         child: const Center(
           child: CircularProgressIndicator(
@@ -154,39 +160,53 @@ class _InlineVideoPlayerState extends State<InlineVideoPlayer> {
       );
     }
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 6),
-      constraints: const BoxConstraints(maxHeight: 250),
+    return SizedBox(
+      width: 200,
+      height: 200,
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(16),
         child: Stack(
           alignment: Alignment.center,
           children: [
-            AspectRatio(
-              aspectRatio: _controller!.value.aspectRatio > 0
-                  ? _controller!.value.aspectRatio
-                  : 16 / 9,
-              child: VideoPlayer(_controller!),
-            ),
-
-            // Play / Pause Gesture Overlay
+            // 1:1 Aspect ratio cropped video
             Positioned.fill(
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                onTap: _togglePlayPause,
+                onTap: widget.onOpenFullScreen,
+                child: FittedBox(
+                  fit: BoxFit.cover,
+                  clipBehavior: Clip.hardEdge,
+                  child: SizedBox(
+                    width: _controller!.value.size.width > 0 ? _controller!.value.size.width : 200,
+                    height: _controller!.value.size.height > 0 ? _controller!.value.size.height : 200,
+                    child: VideoPlayer(_controller!),
+                  ),
+                ),
+              ),
+            ),
+
+            // Tap Overlay: Center Play Button toggles playback, tapping outside opens Fullscreen
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: widget.onOpenFullScreen,
                 child: Container(
                   color: _isPlaying ? Colors.transparent : Colors.black.withOpacity(0.35),
                   child: Center(
-                    child: AnimatedOpacity(
-                      opacity: _isPlaying ? 0.0 : 1.0,
-                      duration: const Duration(milliseconds: 200),
-                      child: CircleAvatar(
-                        radius: 26,
-                        backgroundColor: const Color(0xFF6366F1).withOpacity(0.9),
-                        child: Icon(
-                          _isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                          color: Colors.white,
-                          size: 32,
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: _togglePlayPause,
+                      child: AnimatedOpacity(
+                        opacity: _isPlaying ? 0.0 : 1.0,
+                        duration: const Duration(milliseconds: 200),
+                        child: CircleAvatar(
+                          radius: 26,
+                          backgroundColor: const Color(0xFF6366F1).withOpacity(0.9),
+                          child: Icon(
+                            _isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                            color: Colors.white,
+                            size: 32,
+                          ),
                         ),
                       ),
                     ),

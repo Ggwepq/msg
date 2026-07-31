@@ -53,7 +53,7 @@ class _MessageContextMenuState extends State<MessageContextMenu>
       vsync: this,
       duration: const Duration(milliseconds: 280),
     );
-    _scaleAnim = Tween<double>(begin: 0.92, end: 1.0).animate(
+    _scaleAnim = Tween<double>(begin: 0.94, end: 1.0).animate(
       CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic),
     );
     _fadeAnim = Tween<double>(begin: 0.0, end: 1.0).animate(
@@ -88,54 +88,53 @@ class _MessageContextMenuState extends State<MessageContextMenu>
     widget.onDismiss();
   }
 
-  Widget _buildMediaPreview(Size screenSize, Color accent) {
+  Widget _buildMediaPreview(Color accent) {
     final mediaPath = widget.message.mediaPath!;
     final isImage = widget.message.messageType == 'image';
 
     return Container(
-      constraints: BoxConstraints(
-        maxWidth: screenSize.width * 0.85,
-        maxHeight: screenSize.height * 0.5,
-      ),
+      width: 220,
+      height: 220,
       decoration: BoxDecoration(
         color: _theme.surface,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: accent.withOpacity(0.2),
-            blurRadius: 24,
-            spreadRadius: 4,
+            color: accent.withOpacity(0.25),
+            blurRadius: 20,
+            spreadRadius: 2,
           ),
         ],
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Flexible(
+          Expanded(
             child: isImage
                 ? (kIsWeb || mediaPath.startsWith('http')
-                    ? Image.network(mediaPath, fit: BoxFit.cover)
-                    : Image.file(File(mediaPath), fit: BoxFit.cover))
+                    ? Image.network(mediaPath, width: 220, height: 220, fit: BoxFit.cover)
+                    : Image.file(File(mediaPath), width: 220, height: 220, fit: BoxFit.cover))
                 : Container(
-                    height: 240,
                     color: Colors.black45,
                     child: Center(
                       child: CircleAvatar(
-                        radius: 30,
+                        radius: 28,
                         backgroundColor: accent,
-                        child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 40),
+                        child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 36),
                       ),
                     ),
                   ),
           ),
           if (widget.message.text.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.all(12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              color: _theme.surface,
+              width: double.infinity,
               child: Text(
                 widget.message.text,
-                style: TextStyle(color: _theme.textPrimary, fontSize: 14),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: _theme.textPrimary, fontSize: 13),
               ),
             ),
         ],
@@ -149,16 +148,17 @@ class _MessageContextMenuState extends State<MessageContextMenu>
     final screenSize = MediaQuery.of(context).size;
     final isMedia = widget.message.mediaPath != null && !widget.message.isDeleted;
 
-    final bubbleTop = widget.tapPosition.dy - (widget.bubbleSize.height / 2);
-    final clampedTop = isMedia
-        ? (screenSize.height * 0.15)
-        : bubbleTop.clamp(80.0, screenSize.height - 300);
+    final targetHeight = isMedia ? 220.0 : widget.bubbleSize.height;
 
-    final spaceBelow = screenSize.height - (clampedTop + (isMedia ? 320 : widget.bubbleSize.height));
-    final menuAbove = spaceBelow < 220;
+    // Calculate clamped top from the actual pressed position
+    final bubbleTop = widget.tapPosition.dy - (targetHeight / 2);
+    final clampedTop = bubbleTop.clamp(60.0, screenSize.height - (targetHeight + 220));
+
+    final spaceBelow = screenSize.height - (clampedTop + targetHeight);
+    final menuAbove = spaceBelow < 200;
     final menuTop = menuAbove
         ? clampedTop - 8
-        : clampedTop + (isMedia ? 340 : widget.bubbleSize.height) + 8;
+        : clampedTop + targetHeight + 8;
 
     return AnimatedBuilder(
       animation: _controller,
@@ -179,21 +179,17 @@ class _MessageContextMenuState extends State<MessageContextMenu>
               ),
             ),
 
-            // Message preview (scaled + lifted)
+            // Message / Media preview (staying at exact pressed position!)
             Positioned(
               top: clampedTop,
-              left: isMedia
-                  ? (screenSize.width * 0.075)
-                  : (widget.isMe ? null : 14),
-              right: isMedia
-                  ? null
-                  : (widget.isMe ? 14 : null),
+              left: widget.isMe ? null : 14,
+              right: widget.isMe ? 14 : null,
               child: Transform.scale(
                 scale: _scaleAnim.value,
                 child: FadeTransition(
                   opacity: _fadeAnim,
                   child: isMedia
-                      ? _buildMediaPreview(screenSize, accent)
+                      ? _buildMediaPreview(accent)
                       : Container(
                           constraints: BoxConstraints(
                             maxWidth: screenSize.width * 0.75,
@@ -240,23 +236,19 @@ class _MessageContextMenuState extends State<MessageContextMenu>
               ),
             ),
 
-            // Context menu options + Emoji Bar
+            // Context menu options + Emoji Bar (positioned right next to preview)
             Positioned(
               top: menuAbove ? null : menuTop,
               bottom: menuAbove
                   ? screenSize.height - clampedTop + 8
                   : null,
-              left: isMedia
-                  ? (screenSize.width * 0.075)
-                  : (widget.isMe ? null : 14),
-              right: isMedia
-                  ? null
-                  : (widget.isMe ? 14 : null),
+              left: widget.isMe ? null : 14,
+              right: widget.isMe ? 14 : null,
               child: FadeTransition(
                 opacity: _menuSlideAnim,
                 child: SlideTransition(
                   position: Tween<Offset>(
-                    begin: const Offset(0, -0.2),
+                    begin: const Offset(0, -0.15),
                     end: Offset.zero,
                   ).animate(CurvedAnimation(
                     parent: _controller,

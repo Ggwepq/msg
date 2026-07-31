@@ -42,7 +42,7 @@ class _KeyMsgAppState extends State<KeyMsgApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'KeyMsg',
+      title: 'Msg',
       debugShowCheckedModeBanner: false,
       theme: _themeService.buildTheme(),
       home: const RootNavigationHandler(),

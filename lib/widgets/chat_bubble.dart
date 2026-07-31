@@ -30,6 +30,20 @@ class ChatBubble extends StatefulWidget {
 class _ChatBubbleState extends State<ChatBubble> {
   bool _isRevealedByAdmin = false;
 
+  void _openFullScreenViewer() {
+    if (widget.message.mediaPath != null) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => FullScreenMediaViewer(
+            mediaPath: widget.message.mediaPath!,
+            messageType: widget.message.messageType,
+          ),
+        ),
+      );
+    }
+  }
+
   Widget _buildMediaContent(ThemeService theme, Color accent) {
     final mediaPath = widget.message.mediaPath;
     if (mediaPath == null || mediaPath.isEmpty) return const SizedBox.shrink();
@@ -37,40 +51,63 @@ class _ChatBubbleState extends State<ChatBubble> {
     if (widget.message.messageType == 'image') {
       return Container(
         margin: const EdgeInsets.only(bottom: 6),
-        constraints: const BoxConstraints(maxHeight: 220),
+        width: 200,
+        height: 200,
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(16),
+          color: theme.surfaceLight,
         ),
         child: kIsWeb || mediaPath.startsWith('http')
             ? Image.network(
                 mediaPath,
+                width: 200,
+                height: 200,
                 fit: BoxFit.cover,
                 errorBuilder: (_, __, ___) => _buildMediaError("Image file unavailable"),
               )
             : Image.file(
                 File(mediaPath),
+                width: 200,
+                height: 200,
                 fit: BoxFit.cover,
                 errorBuilder: (_, __, ___) => _buildMediaError("Image file unavailable"),
               ),
       );
     } else if (widget.message.messageType == 'video') {
-      return InlineVideoPlayer(videoPath: mediaPath);
+      return Container(
+        margin: const EdgeInsets.only(bottom: 6),
+        width: 200,
+        height: 200,
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          color: theme.surfaceLight,
+        ),
+        child: InlineVideoPlayer(
+          videoPath: mediaPath,
+          onOpenFullScreen: _openFullScreenViewer,
+        ),
+      );
     }
     return const SizedBox.shrink();
   }
 
   Widget _buildMediaError(String msg) {
     return Container(
+      width: 200,
+      height: 200,
       padding: const EdgeInsets.all(12),
       color: Colors.black26,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.broken_image_outlined, color: Colors.white54, size: 18),
-          const SizedBox(width: 6),
-          Text(msg, style: const TextStyle(color: Colors.white54, fontSize: 12)),
-        ],
+      child: Center(
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.broken_image_outlined, color: Colors.white54, size: 18),
+            const SizedBox(width: 6),
+            Text(msg, style: const TextStyle(color: Colors.white54, fontSize: 12)),
+          ],
+        ),
       ),
     );
   }
@@ -98,21 +135,13 @@ class _ChatBubbleState extends State<ChatBubble> {
               _isRevealedByAdmin = !_isRevealedByAdmin;
             });
           } else if (isShowingNormalStyle && widget.message.mediaPath != null) {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => FullScreenMediaViewer(
-                  mediaPath: widget.message.mediaPath!,
-                  messageType: widget.message.messageType,
-                ),
-              ),
-            );
+            _openFullScreenViewer();
           }
         },
         onLongPressStart: (details) {
           if (widget.onLongPress != null && !isDeleted) {
             final box = context.findRenderObject() as RenderBox?;
-            final size = box?.size ?? const Size(200, 50);
+            final size = box?.size ?? const Size(200, 200);
             widget.onLongPress!(details.globalPosition, size);
           }
         },
@@ -128,7 +157,7 @@ class _ChatBubbleState extends State<ChatBubble> {
                 widget.isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 decoration: BoxDecoration(
                   color: isShowingNormalStyle
                       ? (widget.isMe ? accent.withOpacity(0.18) : theme.surface)
@@ -185,7 +214,7 @@ class _ChatBubbleState extends State<ChatBubble> {
                       ),
                     ],
 
-                    // Media Content (Image / Playable Video)
+                    // Media Content (1:1 Ratio Photo / Playable Video)
                     if (isShowingNormalStyle && widget.message.mediaPath != null)
                       _buildMediaContent(theme, accent),
 
