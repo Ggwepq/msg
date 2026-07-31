@@ -63,6 +63,7 @@ class ChatService extends ChangeNotifier {
     final userJson = prefs.getString('current_user');
     if (userJson != null) {
       _currentUser = UserProfile.fromJson(jsonDecode(userJson));
+      await _loadAddedFriendKeys();
     }
 
     _initialized = true;
@@ -211,6 +212,7 @@ class ChatService extends ChangeNotifier {
     );
 
     _currentUser = userProfile;
+    await _loadAddedFriendKeys();
     await _saveKeys();
     await _saveUserSession(userProfile);
     notifyListeners();
@@ -380,6 +382,70 @@ class ChatService extends ChangeNotifier {
       ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
   }
 
+  final List<String> _addedFriendKeys = [];
+
+  List<String> get addedFriendKeys => List.unmodifiable(_addedFriendKeys);
+
+  // Add friend by entering their key
+  Future<UserProfile> addFriendByKey(String rawKey) async {
+    if (_currentUser == null) throw Exception("Not logged in.");
+
+    final cleanKey = rawKey.trim().toUpperCase();
+    if (cleanKey.isEmpty) throw Exception("Please enter a key.");
+
+    if (cleanKey == _currentUser!.accessKey?.toUpperCase()) {
+      throw Exception("That's your own key!");
+    }
+
+    if (cleanKey == adminMasterKey) {
+      return UserProfile(
+        id: adminId,
+        nickname: _adminNickname,
+        role: UserRole.admin,
+        accessKey: adminMasterKey,
+        lastSeen: DateTime.now(),
+      );
+    }
+
+    final keyIndex = _keys.indexWhere((k) => k.key.toUpperCase() == cleanKey);
+    if (keyIndex == -1) {
+      throw Exception("Key not recognized. Please check the key!");
+    }
+
+    final matchedKey = _keys[keyIndex];
+
+    if (!_addedFriendKeys.contains(matchedKey.key.toUpperCase())) {
+      _addedFriendKeys.add(matchedKey.key.toUpperCase());
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList('added_friend_keys_${_currentUser!.id}', _addedFriendKeys);
+    }
+
+    final targetUserId = matchedKey.claimedByUserId ?? "user_${matchedKey.key.toLowerCase()}";
+    final targetNickname = matchedKey.claimedByNickname ?? matchedKey.key;
+
+    final profile = UserProfile(
+      id: targetUserId,
+      nickname: targetNickname,
+      role: UserRole.friend,
+      accessKey: matchedKey.key,
+      lastSeen: matchedKey.claimedAt ?? DateTime.now(),
+    );
+
+    notifyListeners();
+    return profile;
+  }
+
+  // Load added friend keys for current user
+  Future<void> _loadAddedFriendKeys() async {
+    if (_currentUser == null) return;
+    final prefs = await SharedPreferences.getInstance();
+    final list = prefs.getStringList('added_friend_keys_${_currentUser!.id}');
+    _addedFriendKeys.clear();
+    if (list != null) {
+      _addedFriendKeys.addAll(list);
+    }
+  }
+
   // Get list of conversations for current user
   List<UserProfile> getAvailableChats() {
     if (_currentUser == null) return [];
@@ -412,34 +478,36 @@ class ChatService extends ChangeNotifier {
 
       return friendsMap.values.toList();
     } else {
-      // Dynamic Admin profile using stored _adminNickname
-      final List<UserProfile> chats = [
-        UserProfile(
-          id: adminId,
-          nickname: _adminNickname,
-          role: UserRole.admin,
-          accessKey: adminMasterKey,
-          lastSeen: DateTime.now(),
-        ),
-      ];
+      // Non-Admin Friend: ONLY sees Admin (Host), plus friends whose keys were explicitly added by them
+      final Map<String, UserProfile> chatsMap = {};
 
+      // 1. Admin/Host profile (always accessible)
+      chatsMap[adminId] = UserProfile(
+        id: adminId,
+        nickname: _adminNickname,
+        role: UserRole.admin,
+        accessKey: adminMasterKey,
+        lastSeen: DateTime.now(),
+      );
+
+      // 2. ONLY friends whose key was added explicitly by the current user
       for (var key in _keys) {
-        if (key.isClaimed &&
-            key.claimedByUserId != null &&
-            key.claimedByUserId != _currentUser!.id) {
-          chats.add(
-            UserProfile(
-              id: key.claimedByUserId!,
-              nickname: key.claimedByNickname ?? "Friend",
+        final isAddedByMe = _addedFriendKeys.contains(key.key.toUpperCase());
+        if (isAddedByMe) {
+          final targetId = key.claimedByUserId ?? "user_${key.key.toLowerCase()}";
+          if (targetId != _currentUser!.id) {
+            chatsMap[targetId] = UserProfile(
+              id: targetId,
+              nickname: key.claimedByNickname ?? key.key,
               role: UserRole.friend,
               accessKey: key.key,
               lastSeen: key.claimedAt ?? DateTime.now(),
-            ),
-          );
+            );
+          }
         }
       }
 
-      return chats;
+      return chatsMap.values.toList();
     }
   }
 

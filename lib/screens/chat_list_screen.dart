@@ -18,6 +18,7 @@ class _ChatListScreenState extends State<ChatListScreen>
     with SingleTickerProviderStateMixin {
   final _chatService = ChatService();
   final _theme = ThemeService();
+  final _keyInputController = TextEditingController();
   late AnimationController _entranceController;
 
   @override
@@ -35,12 +36,121 @@ class _ChatListScreenState extends State<ChatListScreen>
   void dispose() {
     _chatService.removeListener(_onStateChanged);
     _theme.removeListener(_onStateChanged);
+    _keyInputController.dispose();
     _entranceController.dispose();
     super.dispose();
   }
 
   void _onStateChanged() {
     if (mounted) setState(() {});
+  }
+
+  void _showAddFriendDialog(UserProfile currentUser) {
+    String? errorText;
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        final accent = _theme.primary;
+
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              backgroundColor: _theme.surface,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              title: Text(
+                "add friend",
+                style: TextStyle(
+                  color: _theme.textPrimary,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 18,
+                ),
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "enter your friend's key code to start chatting",
+                    style: TextStyle(color: _theme.textSecondary, fontSize: 13),
+                  ),
+                  const SizedBox(height: 14),
+                  TextField(
+                    controller: _keyInputController,
+                    style: TextStyle(
+                      color: _theme.textPrimary,
+                      fontFamily: 'monospace',
+                      fontWeight: FontWeight.w700,
+                      fontSize: 15,
+                    ),
+                    textCapitalization: TextCapitalization.characters,
+                    decoration: InputDecoration(
+                      hintText: "e.g. ALICE-1234",
+                      filled: true,
+                      fillColor: _theme.surfaceLight,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                  ),
+                  if (errorText != null) ...[
+                    const SizedBox(height: 10),
+                    Text(
+                      errorText!,
+                      style: const TextStyle(color: Color(0xFFFF6F6F), fontSize: 13),
+                    ),
+                  ],
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    _keyInputController.clear();
+                    Navigator.pop(context);
+                  },
+                  child: Text("cancel", style: TextStyle(color: _theme.textSecondary)),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: accent,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  onPressed: () async {
+                    try {
+                      final friendProfile = await _chatService.addFriendByKey(_keyInputController.text);
+                      _keyInputController.clear();
+                      if (context.mounted) {
+                        Navigator.pop(context);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text("Connected with ${friendProfile.nickname} ✨")),
+                        );
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => ChatDetailScreen(
+                              currentUser: currentUser,
+                              peerUser: friendProfile,
+                            ),
+                          ),
+                        );
+                      }
+                    } catch (e) {
+                      setDialogState(() {
+                        errorText = e.toString().replaceAll("Exception: ", "");
+                      });
+                    }
+                  },
+                  child: const Text("connect", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
   @override
@@ -51,6 +161,12 @@ class _ChatListScreenState extends State<ChatListScreen>
 
     return Scaffold(
       backgroundColor: _theme.bg,
+      floatingActionButton: FloatingActionButton(
+        backgroundColor: accent,
+        elevation: 4,
+        onPressed: () => _showAddFriendDialog(user),
+        child: const Icon(Icons.person_add_alt_1_rounded, color: Colors.white),
+      ),
       body: CustomScrollView(
         slivers: [
           // Header
