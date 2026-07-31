@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../models/connection_request.dart';
 import '../models/user_profile.dart';
 import '../services/chat_service.dart';
 import '../services/theme_service.dart';
@@ -59,7 +60,7 @@ class _ChatListScreenState extends State<ChatListScreen>
               backgroundColor: _theme.surface,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
               title: Text(
-                "add friend",
+                "add friend by key",
                 style: TextStyle(
                   color: _theme.textPrimary,
                   fontWeight: FontWeight.w800,
@@ -71,7 +72,7 @@ class _ChatListScreenState extends State<ChatListScreen>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    "enter your friend's key code to start chatting",
+                    "enter a claimed key code to send a connection request",
                     style: TextStyle(color: _theme.textSecondary, fontSize: 13),
                   ),
                   const SizedBox(height: 14),
@@ -85,7 +86,7 @@ class _ChatListScreenState extends State<ChatListScreen>
                     ),
                     textCapitalization: TextCapitalization.characters,
                     decoration: InputDecoration(
-                      hintText: "e.g. ALICE-1234",
+                      hintText: "e.g. SECRET-ALICE-123",
                       filled: true,
                       fillColor: _theme.surfaceLight,
                       border: OutlineInputBorder(
@@ -120,19 +121,16 @@ class _ChatListScreenState extends State<ChatListScreen>
                   ),
                   onPressed: () async {
                     try {
-                      final friendProfile = await _chatService.addFriendByKey(_keyInputController.text);
+                      final req = await _chatService.requestConnectionByKey(_keyInputController.text);
                       _keyInputController.clear();
                       if (context.mounted) {
                         Navigator.pop(context);
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text("Connected with ${friendProfile.nickname} ✨")),
-                        );
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => ChatDetailScreen(
-                              currentUser: currentUser,
-                              peerUser: friendProfile,
+                          SnackBar(
+                            content: Text(
+                              req.status == 'accepted'
+                                  ? "Connected with ${req.receiverNickname} ✨"
+                                  : "Request sent to ${req.receiverNickname}! Waiting for them to accept.",
                             ),
                           ),
                         );
@@ -143,7 +141,7 @@ class _ChatListScreenState extends State<ChatListScreen>
                       });
                     }
                   },
-                  child: const Text("connect", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                  child: const Text("send request", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
                 ),
               ],
             );
@@ -153,9 +151,127 @@ class _ChatListScreenState extends State<ChatListScreen>
     );
   }
 
+  Widget _buildPendingRequestsSection(List<ConnectionRequest> pendingRequests, Color accent) {
+    if (pendingRequests.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.person_add_rounded, size: 16, color: accent),
+              const SizedBox(width: 6),
+              Text(
+                "connection requests (${pendingRequests.length})",
+                style: TextStyle(
+                  color: accent,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Column(
+            children: pendingRequests.map((req) {
+              return Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: _theme.surface,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: accent.withOpacity(0.3)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: accent.withOpacity(0.08),
+                      blurRadius: 10,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: accent.withOpacity(0.15),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Center(
+                        child: Text(
+                          req.senderNickname.isNotEmpty ? req.senderNickname[0].toUpperCase() : "?",
+                          style: TextStyle(color: accent, fontWeight: FontWeight.bold, fontSize: 16),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            req.senderNickname,
+                            style: TextStyle(
+                              color: _theme.textPrimary,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            "wants to connect with you",
+                            style: TextStyle(color: _theme.textSecondary, fontSize: 12),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    // Accept Button
+                    GestureDetector(
+                      onTap: () => _chatService.acceptConnectionRequest(req.id),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                        decoration: BoxDecoration(
+                          color: accent,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Text(
+                          "Accept",
+                          style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    // Decline Button
+                    GestureDetector(
+                      onTap: () => _chatService.declineConnectionRequest(req.id),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                        decoration: BoxDecoration(
+                          color: _theme.surfaceLight,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(Icons.close, color: Colors.white54, size: 16),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }).toList(),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final availableChats = _chatService.getAvailableChats();
+    final pendingRequests = _chatService.getPendingRequestsForUser();
     final accent = _theme.primary;
     final user = _chatService.currentUser ?? widget.currentUser;
 
@@ -276,6 +392,12 @@ class _ChatListScreenState extends State<ChatListScreen>
               ),
             ),
           ),
+
+          // Pending Connection Requests (if any)
+          if (pendingRequests.isNotEmpty)
+            SliverToBoxAdapter(
+              child: _buildPendingRequestsSection(pendingRequests, accent),
+            ),
 
           // Chat list
           if (availableChats.isEmpty)

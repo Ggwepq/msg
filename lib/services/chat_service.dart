@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/access_key.dart';
 import '../models/chat_message.dart';
+import '../models/connection_request.dart';
 import '../models/user_profile.dart';
 
 class ChatService extends ChangeNotifier {
@@ -18,17 +19,19 @@ class ChatService extends ChangeNotifier {
   String _adminNickname = "Host";
   final List<AccessKey> _keys = [];
   final List<ChatMessage> _messages = [];
+  final List<ConnectionRequest> _connectionRequests = [];
   bool _initialized = false;
 
   UserProfile? get currentUser => _currentUser;
   String get adminNickname => _adminNickname;
   List<AccessKey> get keys => List.unmodifiable(_keys);
   List<ChatMessage> get messages => List.unmodifiable(_messages);
+  List<ConnectionRequest> get connectionRequests => List.unmodifiable(_connectionRequests);
 
   Future<void> init() async {
     if (_initialized) return;
     final prefs = await SharedPreferences.getInstance();
-    
+
     // Load admin nickname
     final storedAdminName = prefs.getString('admin_nickname');
     if (storedAdminName != null && storedAdminName.isNotEmpty) {
@@ -59,11 +62,19 @@ class ChatService extends ChangeNotifier {
       await _saveMessages();
     }
 
+    // Load connection requests
+    final reqsJson = prefs.getStringList('connection_requests');
+    if (reqsJson != null && reqsJson.isNotEmpty) {
+      _connectionRequests.clear();
+      for (var r in reqsJson) {
+        _connectionRequests.add(ConnectionRequest.fromJson(jsonDecode(r)));
+      }
+    }
+
     // Load active session user
     final userJson = prefs.getString('current_user');
     if (userJson != null) {
       _currentUser = UserProfile.fromJson(jsonDecode(userJson));
-      await _loadAddedFriendKeys();
     }
 
     _initialized = true;
@@ -138,7 +149,6 @@ class ChatService extends ChangeNotifier {
     }
 
     final matchedKey = _keys[keyIndex];
-    // isReturning = key has been claimed before (has a userId)
     final isReturning = matchedKey.isClaimed && matchedKey.claimedByUserId != null;
     return AccessKeyValidation(
       key: matchedKey.key,
@@ -186,7 +196,6 @@ class ChatService extends ChangeNotifier {
 
     final matchedKey = _keys[keyIndex];
 
-    // Use provided nickname if given, else fall back to pre-set, else error
     final finalNickname = (nickname != null && nickname.trim().isNotEmpty)
         ? nickname.trim()
         : (matchedKey.claimedByNickname ?? "").trim();
@@ -212,14 +221,13 @@ class ChatService extends ChangeNotifier {
     );
 
     _currentUser = userProfile;
-    await _loadAddedFriendKeys();
     await _saveKeys();
     await _saveUserSession(userProfile);
     notifyListeners();
     return userProfile;
   }
 
-  // Update current user's nickname dynamically across app & message history
+  // Update current user's nickname
   Future<void> updateNickname(String newNickname) async {
     if (_currentUser == null) return;
     final cleanName = newNickname.trim();
@@ -257,11 +265,16 @@ class ChatService extends ChangeNotifier {
           text: _messages[i].text,
           timestamp: _messages[i].timestamp,
           isRead: _messages[i].isRead,
+          replyToText: _messages[i].replyToText,
+          replyToSender: _messages[i].replyToSender,
+          messageType: _messages[i].messageType,
+          mediaPath: _messages[i].mediaPath,
+          isDeleted: _messages[i].isDeleted,
+          reactions: _messages[i].reactions,
         );
       }
     }
     await _saveMessages();
-
     await _saveUserSession(_currentUser!);
     notifyListeners();
   }
@@ -274,7 +287,7 @@ class ChatService extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Generate new key — prefix becomes default nickname for the friend
+  // Generate new key
   Future<AccessKey> generateNewKey([String? customPrefix]) async {
     final rawPrefix = (customPrefix ?? "").trim();
     final prefix = rawPrefix.isNotEmpty
@@ -283,7 +296,6 @@ class ChatService extends ChangeNotifier {
     final randomSuffix = (1000 + (DateTime.now().microsecondsSinceEpoch % 9000)).toString();
     final newKeyCode = "$prefix-$randomSuffix";
 
-    // Title-case the raw prefix for use as default nickname
     String? defaultNickname;
     if (rawPrefix.isNotEmpty) {
       defaultNickname = rawPrefix
@@ -312,7 +324,7 @@ class ChatService extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Delete message (marks as deleted so placeholder remains)
+  // Delete message
   Future<void> deleteMessage(String messageId) async {
     final index = _messages.indexWhere((m) => m.id == messageId);
     if (index != -1) {
@@ -322,7 +334,7 @@ class ChatService extends ChangeNotifier {
     }
   }
 
-  // Toggle Emoji Reaction on a message
+  // Toggle Emoji Reaction
   Future<void> toggleReaction({
     required String messageId,
     required String userId,
@@ -382,29 +394,16 @@ class ChatService extends ChangeNotifier {
       ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
   }
 
-  final List<String> _addedFriendKeys = [];
-
-  List<String> get addedFriendKeys => List.unmodifiable(_addedFriendKeys);
-
-  // Add friend by entering their key
-  Future<UserProfile> addFriendByKey(String rawKey) async {
+  // Send Connection Request by entering a friend's key
+  Future<ConnectionRequest> requestConnectionByKey(String rawKey) async {
     if (_currentUser == null) throw Exception("Not logged in.");
 
     final cleanKey = rawKey.trim().toUpperCase();
     if (cleanKey.isEmpty) throw Exception("Please enter a key.");
 
-    if (cleanKey == _currentUser!.accessKey?.toUpperCase()) {
-      throw Exception("That's your own key!");
-    }
-
+    // Check Master Key
     if (cleanKey == adminMasterKey) {
-      return UserProfile(
-        id: adminId,
-        nickname: _adminNickname,
-        role: UserRole.admin,
-        accessKey: adminMasterKey,
-        lastSeen: DateTime.now(),
-      );
+      throw Exception("That's the Admin key. Admin is already in your chat list!");
     }
 
     final keyIndex = _keys.indexWhere((k) => k.key.toUpperCase() == cleanKey);
@@ -414,35 +413,93 @@ class ChatService extends ChangeNotifier {
 
     final matchedKey = _keys[keyIndex];
 
-    if (!_addedFriendKeys.contains(matchedKey.key.toUpperCase())) {
-      _addedFriendKeys.add(matchedKey.key.toUpperCase());
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setStringList('added_friend_keys_${_currentUser!.id}', _addedFriendKeys);
+    // Rule 1: CANNOT add keys that are not claimed yet!
+    if (!matchedKey.isClaimed || matchedKey.claimedByUserId == null) {
+      throw Exception("This key hasn't been claimed by anyone yet! Ask your friend to log in with this key first.");
     }
 
-    final targetUserId = matchedKey.claimedByUserId ?? "user_${matchedKey.key.toLowerCase()}";
+    // Rule 2: Cannot add your own key
+    if (matchedKey.claimedByUserId == _currentUser!.id) {
+      throw Exception("That's your own key!");
+    }
+
+    final targetUserId = matchedKey.claimedByUserId!;
     final targetNickname = matchedKey.claimedByNickname ?? matchedKey.key;
 
-    final profile = UserProfile(
-      id: targetUserId,
-      nickname: targetNickname,
-      role: UserRole.friend,
-      accessKey: matchedKey.key,
-      lastSeen: matchedKey.claimedAt ?? DateTime.now(),
+    // Check if already connected (accepted)
+    final isAlreadyConnected = _connectionRequests.any((r) =>
+        r.status == 'accepted' &&
+        ((r.senderUserId == _currentUser!.id && r.receiverUserId == targetUserId) ||
+            (r.senderUserId == targetUserId && r.receiverUserId == _currentUser!.id)));
+
+    if (isAlreadyConnected) {
+      throw Exception("You are already connected with $targetNickname!");
+    }
+
+    // Check if pending request already sent
+    final existingPending = _connectionRequests.firstWhere(
+      (r) =>
+          r.status == 'pending' &&
+          ((r.senderUserId == _currentUser!.id && r.receiverUserId == targetUserId) ||
+              (r.senderUserId == targetUserId && r.receiverUserId == _currentUser!.id)),
+      orElse: () => ConnectionRequest(
+          id: '', senderUserId: '', senderNickname: '', receiverUserId: '', receiverNickname: '', timestamp: DateTime.now()),
     );
 
+    if (existingPending.id.isNotEmpty) {
+      if (existingPending.senderUserId == _currentUser!.id) {
+        throw Exception("Connection request already sent to $targetNickname! Waiting for them to accept.");
+      } else {
+        // Automatically accept if the other user already sent a request to you!
+        existingPending.status = 'accepted';
+        await _saveConnectionRequests();
+        notifyListeners();
+        return existingPending;
+      }
+    }
+
+    // Create Connection Request
+    final request = ConnectionRequest(
+      id: "req_${DateTime.now().millisecondsSinceEpoch}",
+      senderUserId: _currentUser!.id,
+      senderNickname: _currentUser!.nickname,
+      receiverUserId: targetUserId,
+      receiverNickname: targetNickname,
+      timestamp: DateTime.now(),
+      status: 'pending',
+    );
+
+    _connectionRequests.add(request);
+    await _saveConnectionRequests();
     notifyListeners();
-    return profile;
+    return request;
   }
 
-  // Load added friend keys for current user
-  Future<void> _loadAddedFriendKeys() async {
-    if (_currentUser == null) return;
-    final prefs = await SharedPreferences.getInstance();
-    final list = prefs.getStringList('added_friend_keys_${_currentUser!.id}');
-    _addedFriendKeys.clear();
-    if (list != null) {
-      _addedFriendKeys.addAll(list);
+  // Get pending connection requests for current user
+  List<ConnectionRequest> getPendingRequestsForUser() {
+    if (_currentUser == null) return [];
+    return _connectionRequests
+        .where((r) => r.receiverUserId == _currentUser!.id && r.status == 'pending')
+        .toList();
+  }
+
+  // Accept Connection Request
+  Future<void> acceptConnectionRequest(String requestId) async {
+    final index = _connectionRequests.indexWhere((r) => r.id == requestId);
+    if (index != -1) {
+      _connectionRequests[index].status = 'accepted';
+      await _saveConnectionRequests();
+      notifyListeners();
+    }
+  }
+
+  // Decline Connection Request
+  Future<void> declineConnectionRequest(String requestId) async {
+    final index = _connectionRequests.indexWhere((r) => r.id == requestId);
+    if (index != -1) {
+      _connectionRequests[index].status = 'declined';
+      await _saveConnectionRequests();
+      notifyListeners();
     }
   }
 
@@ -478,7 +535,7 @@ class ChatService extends ChangeNotifier {
 
       return friendsMap.values.toList();
     } else {
-      // Non-Admin Friend: ONLY sees Admin (Host), plus friends whose keys were explicitly added by them
+      // Non-Admin Friend: ONLY sees Admin (Host), plus users with accepted ConnectionRequests
       final Map<String, UserProfile> chatsMap = {};
 
       // 1. Admin/Host profile (always accessible)
@@ -490,18 +547,22 @@ class ChatService extends ChangeNotifier {
         lastSeen: DateTime.now(),
       );
 
-      // 2. ONLY friends whose key was added explicitly by the current user
-      for (var key in _keys) {
-        final isAddedByMe = _addedFriendKeys.contains(key.key.toUpperCase());
-        if (isAddedByMe) {
-          final targetId = key.claimedByUserId ?? "user_${key.key.toLowerCase()}";
-          if (targetId != _currentUser!.id) {
-            chatsMap[targetId] = UserProfile(
-              id: targetId,
-              nickname: key.claimedByNickname ?? key.key,
+      // 2. ONLY friends with ACCEPTED Connection Requests
+      for (var req in _connectionRequests) {
+        if (req.status == 'accepted') {
+          if (req.senderUserId == _currentUser!.id) {
+            chatsMap[req.receiverUserId] = UserProfile(
+              id: req.receiverUserId,
+              nickname: req.receiverNickname,
               role: UserRole.friend,
-              accessKey: key.key,
-              lastSeen: key.claimedAt ?? DateTime.now(),
+              lastSeen: req.timestamp,
+            );
+          } else if (req.receiverUserId == _currentUser!.id) {
+            chatsMap[req.senderUserId] = UserProfile(
+              id: req.senderUserId,
+              nickname: req.senderNickname,
+              role: UserRole.friend,
+              lastSeen: req.timestamp,
             );
           }
         }
@@ -521,6 +582,12 @@ class ChatService extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     final jsonList = _messages.map((m) => jsonEncode(m.toJson())).toList();
     await prefs.setStringList('chat_messages', jsonList);
+  }
+
+  Future<void> _saveConnectionRequests() async {
+    final prefs = await SharedPreferences.getInstance();
+    final jsonList = _connectionRequests.map((r) => jsonEncode(r.toJson())).toList();
+    await prefs.setStringList('connection_requests', jsonList);
   }
 
   Future<void> _saveUserSession(UserProfile user) async {
