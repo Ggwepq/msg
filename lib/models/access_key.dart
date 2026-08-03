@@ -26,12 +26,20 @@ class AccessKey {
 
   factory AccessKey.fromJson(Map<String, dynamic> json) => AccessKey(
         key: json['key'] as String,
-        createdAt: DateTime.parse(json['createdAt'] as String),
+        createdAt: _parseDate(json['createdAt']),
         isClaimed: json['isClaimed'] as bool? ?? false,
         claimedByUserId: json['claimedByUserId'] as String?,
         claimedByNickname: json['claimedByNickname'] as String?,
-        claimedAt: json['claimedAt'] != null
-            ? DateTime.parse(json['claimedAt'] as String)
-            : null,
+        claimedAt: json['claimedAt'] != null ? _parseDate(json['claimedAt']) : null,
       );
+
+  static DateTime _parseDate(dynamic val) {
+    if (val is String) return DateTime.parse(val);
+    if (val is DateTime) return val;
+    if (val != null && val.runtimeType.toString() == 'Timestamp') {
+      return (val as dynamic).toDate() as DateTime;
+    }
+    return DateTime.now();
+  }
 }
+

@@ -1,4 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'firebase_options.dart';
+
 import 'screens/chat_list_screen.dart';
 import 'screens/login_screen.dart';
 import 'services/chat_service.dart';
@@ -6,12 +11,31 @@ import 'services/theme_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  try {
+    await dotenv.load(fileName: ".env");
+  } catch (e) {
+    debugPrint('Dotenv load notice: $e');
+  }
+  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
+    debugPrint('Running on Linux Desktop (Local Storage Mode)');
+  } else {
+    try {
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+    } catch (e) {
+      debugPrint('Firebase initialization notice: $e');
+    }
+  }
+
+
   final chatService = ChatService();
   final themeService = ThemeService();
   await chatService.init();
   await themeService.init();
   runApp(const KeyMsgApp());
 }
+
 
 class KeyMsgApp extends StatefulWidget {
   const KeyMsgApp({super.key});

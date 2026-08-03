@@ -34,7 +34,17 @@ class ConnectionRequest {
         senderNickname: json['senderNickname'] as String,
         receiverUserId: json['receiverUserId'] as String,
         receiverNickname: json['receiverNickname'] as String,
-        timestamp: DateTime.parse(json['timestamp'] as String),
+        timestamp: _parseDate(json['timestamp']),
         status: json['status'] as String? ?? 'pending',
       );
+
+  static DateTime _parseDate(dynamic val) {
+    if (val is String) return DateTime.parse(val);
+    if (val is DateTime) return val;
+    if (val != null && val.runtimeType.toString() == 'Timestamp') {
+      return (val as dynamic).toDate() as DateTime;
+    }
+    return DateTime.now();
+  }
 }
+

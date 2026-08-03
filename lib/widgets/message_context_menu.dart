@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/chat_message.dart';
 import '../services/theme_service.dart';
+import 'inline_video_player.dart';
 
 class MessageContextMenu extends StatefulWidget {
   final ChatMessage message;
@@ -114,16 +115,7 @@ class _MessageContextMenuState extends State<MessageContextMenu>
                 ? (kIsWeb || mediaPath.startsWith('http')
                     ? Image.network(mediaPath, width: 220, height: 220, fit: BoxFit.cover)
                     : Image.file(File(mediaPath), width: 220, height: 220, fit: BoxFit.cover))
-                : Container(
-                    color: Colors.black45,
-                    child: Center(
-                      child: CircleAvatar(
-                        radius: 28,
-                        backgroundColor: accent,
-                        child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 36),
-                      ),
-                    ),
-                  ),
+                : InlineVideoPlayer(videoPath: mediaPath),
           ),
           if (widget.message.text.isNotEmpty)
             Container(
@@ -173,150 +165,150 @@ class _MessageContextMenuState extends State<MessageContextMenu>
           builder: (context, child) {
             return Stack(
               children: [
-            // Blurred + dimmed background — tap to dismiss
-            GestureDetector(
-              onTap: _dismiss,
-              child: BackdropFilter(
-                filter: ImageFilter.blur(
-                  sigmaX: _blurAnim.value,
-                  sigmaY: _blurAnim.value,
-                ),
-                child: Container(
-                  color: Colors.black.withOpacity(0.45 * _fadeAnim.value),
-                ),
-              ),
-            ),
-
-            // Message / Media preview (staying at exact pressed position!)
-            Positioned(
-              top: clampedTop,
-              left: widget.isMe ? null : 14,
-              right: widget.isMe ? 14 : null,
-              child: Transform.scale(
-                scale: _scaleAnim.value,
-                child: FadeTransition(
-                  opacity: _fadeAnim,
-                  child: isMedia
-                      ? _buildMediaPreview(accent)
-                      : Container(
-                          constraints: BoxConstraints(
-                            maxWidth: screenSize.width * 0.75,
-                          ),
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 11),
-                          decoration: BoxDecoration(
-                            color: widget.isMe
-                                ? accent.withOpacity(0.22)
-                                : _theme.surface,
-                            borderRadius: BorderRadius.only(
-                              topLeft: const Radius.circular(20),
-                              topRight: const Radius.circular(20),
-                              bottomLeft:
-                                  Radius.circular(widget.isMe ? 20 : 6),
-                              bottomRight:
-                                  Radius.circular(widget.isMe ? 6 : 20),
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: accent.withOpacity(0.1),
-                                blurRadius: 20,
-                                spreadRadius: 2,
-                              ),
-                            ],
-                          ),
-                          child: Text(
-                            widget.message.isDeleted
-                                ? "this message was deleted"
-                                : widget.message.text,
-                            style: TextStyle(
-                              color: widget.message.isDeleted
-                                  ? _theme.textMuted
-                                  : _theme.textPrimary,
-                              fontSize: 14.5,
-                              fontStyle: widget.message.isDeleted
-                                  ? FontStyle.italic
-                                  : FontStyle.normal,
-                              height: 1.35,
-                            ),
-                          ),
-                        ),
-                ),
-              ),
-            ),
-
-            // Context menu options + Emoji Bar (positioned right next to preview)
-            Positioned(
-              top: menuAbove ? null : menuTop,
-              bottom: menuAbove
-                  ? screenSize.height - clampedTop + 8
-                  : null,
-              left: widget.isMe ? null : 14,
-              right: widget.isMe ? 14 : null,
-              child: FadeTransition(
-                opacity: _menuSlideAnim,
-                child: SlideTransition(
-                  position: Tween<Offset>(
-                    begin: const Offset(0, -0.15),
-                    end: Offset.zero,
-                  ).animate(CurvedAnimation(
-                    parent: _controller,
-                    curve: const Interval(0.15, 1.0,
-                        curve: Curves.easeOutCubic),
-                  )),
-                  child: Column(
-                    crossAxisAlignment: widget.isMe
-                        ? CrossAxisAlignment.end
-                        : CrossAxisAlignment.start,
-                    children: [
-                      // iOS-Style Emoji Tapback Pill Bar
-                      if (!widget.message.isDeleted && widget.onReactionSelect != null) ...[
-                        Container(
-                          margin: const EdgeInsets.only(bottom: 8),
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: _theme.surfaceLight,
-                            borderRadius: BorderRadius.circular(24),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.3),
-                                blurRadius: 16,
-                                offset: const Offset(0, 4),
-                              ),
-                            ],
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: reactionsList.map((emoji) {
-                              return GestureDetector(
-                                onTap: () {
-                                  widget.onReactionSelect!(emoji);
-                                  _dismiss();
-                                },
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 6),
-                                  child: Text(
-                                    emoji,
-                                    style: const TextStyle(fontSize: 22),
-                                  ),
-                                ),
-                              );
-                            }).toList(),
-                          ),
-                        ),
-                      ],
-
-                      _buildMenu(accent),
-                    ],
+                // Blurred + dimmed background — tap to dismiss
+                GestureDetector(
+                  onTap: _dismiss,
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(
+                      sigmaX: _blurAnim.value,
+                      sigmaY: _blurAnim.value,
+                    ),
+                    child: Container(
+                      color: Colors.black.withOpacity(0.45 * _fadeAnim.value),
+                    ),
                   ),
                 ),
-              ),
-            ),
-          ],
-        );
-      },
-    ),
-  ),
-);
+
+                // Message / Media preview (staying at exact pressed position!)
+                Positioned(
+                  top: clampedTop,
+                  left: widget.isMe ? null : 14,
+                  right: widget.isMe ? 14 : null,
+                  child: Transform.scale(
+                    scale: _scaleAnim.value,
+                    child: FadeTransition(
+                      opacity: _fadeAnim,
+                      child: isMedia
+                          ? _buildMediaPreview(accent)
+                          : Container(
+                              constraints: BoxConstraints(
+                                maxWidth: screenSize.width * 0.75,
+                              ),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 16, vertical: 11),
+                              decoration: BoxDecoration(
+                                color: widget.isMe
+                                    ? accent.withOpacity(0.22)
+                                    : _theme.surface,
+                                borderRadius: BorderRadius.only(
+                                  topLeft: const Radius.circular(20),
+                                  topRight: const Radius.circular(20),
+                                  bottomLeft:
+                                      Radius.circular(widget.isMe ? 20 : 6),
+                                  bottomRight:
+                                      Radius.circular(widget.isMe ? 6 : 20),
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: accent.withOpacity(0.1),
+                                    blurRadius: 20,
+                                    spreadRadius: 2,
+                                  ),
+                                ],
+                              ),
+                              child: Text(
+                                widget.message.isDeleted
+                                    ? "this message was deleted"
+                                    : widget.message.text,
+                                style: TextStyle(
+                                  color: widget.message.isDeleted
+                                      ? _theme.textMuted
+                                      : _theme.textPrimary,
+                                  fontSize: 14.5,
+                                  fontStyle: widget.message.isDeleted
+                                      ? FontStyle.italic
+                                      : FontStyle.normal,
+                                  height: 1.35,
+                                ),
+                              ),
+                            ),
+                    ),
+                  ),
+                ),
+
+                // Context menu options + Emoji Bar (positioned right next to preview)
+                Positioned(
+                  top: menuAbove ? null : menuTop,
+                  bottom: menuAbove
+                      ? screenSize.height - clampedTop + 8
+                      : null,
+                  left: widget.isMe ? null : 14,
+                  right: widget.isMe ? 14 : null,
+                  child: FadeTransition(
+                    opacity: _menuSlideAnim,
+                    child: SlideTransition(
+                      position: Tween<Offset>(
+                        begin: const Offset(0, -0.15),
+                        end: Offset.zero,
+                      ).animate(CurvedAnimation(
+                        parent: _controller,
+                        curve: const Interval(0.15, 1.0,
+                            curve: Curves.easeOutCubic),
+                      )),
+                      child: Column(
+                        crossAxisAlignment: widget.isMe
+                            ? CrossAxisAlignment.end
+                            : CrossAxisAlignment.start,
+                        children: [
+                          // iOS-Style Emoji Tapback Pill Bar
+                          if (!widget.message.isDeleted && widget.onReactionSelect != null) ...[
+                            Container(
+                              margin: const EdgeInsets.only(bottom: 8),
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: _theme.surfaceLight,
+                                borderRadius: BorderRadius.circular(24),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.3),
+                                    blurRadius: 16,
+                                    offset: const Offset(0, 4),
+                                  ),
+                                ],
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: reactionsList.map((emoji) {
+                                  return GestureDetector(
+                                    onTap: () {
+                                      widget.onReactionSelect!(emoji);
+                                      _dismiss();
+                                    },
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6),
+                                      child: Text(
+                                        emoji,
+                                        style: const TextStyle(fontSize: 22),
+                                      ),
+                                    ),
+                                  );
+                                }).toList(),
+                              ),
+                            ),
+                          ],
+
+                          _buildMenu(accent),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
   }
 
   Widget _buildMenu(Color accent) {

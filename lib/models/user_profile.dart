@@ -28,6 +28,16 @@ class UserProfile {
         nickname: json['nickname'] as String,
         role: json['role'] == 'admin' ? UserRole.admin : UserRole.friend,
         accessKey: json['accessKey'] as String?,
-        lastSeen: DateTime.parse(json['lastSeen'] as String),
+        lastSeen: _parseDate(json['lastSeen']),
       );
+
+  static DateTime _parseDate(dynamic val) {
+    if (val is String) return DateTime.parse(val);
+    if (val is DateTime) return val;
+    if (val != null && val.runtimeType.toString() == 'Timestamp') {
+      return (val as dynamic).toDate() as DateTime;
+    }
+    return DateTime.now();
+  }
 }
+

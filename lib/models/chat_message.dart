@@ -51,7 +51,7 @@ class ChatMessage {
         senderNickname: json['senderNickname'] as String,
         receiverId: json['receiverId'] as String,
         text: json['text'] as String,
-        timestamp: DateTime.parse(json['timestamp'] as String),
+        timestamp: _parseDate(json['timestamp']),
         isRead: json['isRead'] as bool? ?? false,
         replyToText: json['replyToText'] as String?,
         replyToSender: json['replyToSender'] as String?,
@@ -62,4 +62,14 @@ class ChatMessage {
             ? Map<String, String>.from(json['reactions'] as Map)
             : {},
       );
+
+  static DateTime _parseDate(dynamic val) {
+    if (val is String) return DateTime.parse(val);
+    if (val is DateTime) return val;
+    if (val != null && val.runtimeType.toString() == 'Timestamp') {
+      return (val as dynamic).toDate() as DateTime;
+    }
+    return DateTime.now();
+  }
 }
+
