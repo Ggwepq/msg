@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -26,18 +27,32 @@ class MediaSendPreviewDialog extends StatefulWidget {
 class _MediaSendPreviewDialogState extends State<MediaSendPreviewDialog> {
   final _captionController = TextEditingController();
   final _theme = ThemeService();
-  bool _isCompressing = false;
+  bool _isProcessing = false;
+  double _compressionPercent = 0.0;
   String? _errorMessage;
   double _fileSizeMB = 0.0;
+  Subscription? _compressSubscription;
 
   @override
   void initState() {
     super.initState();
     _calculateInitialFileSize();
+    if (widget.isVideo) {
+      try {
+        _compressSubscription = VideoCompress.compressProgress$.subscribe((progress) {
+          if (mounted) {
+            setState(() {
+              _compressionPercent = progress;
+            });
+          }
+        });
+      } catch (_) {}
+    }
   }
 
   @override
   void dispose() {
+    _compressSubscription?.unsubscribe();
     _captionController.dispose();
     super.dispose();
   }
@@ -45,56 +60,55 @@ class _MediaSendPreviewDialogState extends State<MediaSendPreviewDialog> {
   Future<void> _calculateInitialFileSize() async {
     try {
       final bytes = await File(widget.pickedFile.path).length();
-      setState(() {
-        _fileSizeMB = bytes / (1024 * 1024);
-      });
+      if (mounted) {
+        setState(() {
+          _fileSizeMB = bytes / (1024 * 1024);
+        });
+      }
     } catch (_) {}
   }
 
   Future<void> _processAndSend() async {
     setState(() {
-      _isCompressing = true;
+      _isProcessing = true;
       _errorMessage = null;
+      _compressionPercent = 0.0;
     });
 
     String finalPath = widget.pickedFile.path;
 
     if (widget.isVideo) {
       try {
-        // 1. Duration check (< 10 minutes)
-        final info = await VideoCompress.getMediaInfo(widget.pickedFile.path);
-        final durationMs = info.duration ?? 0;
-        if (durationMs > 600000) {
-          setState(() {
-            _isCompressing = false;
-            _errorMessage = "Video exceeds 10-minute duration limit.";
-          });
-          return;
-        }
-
-        // 2. Compress Video
+        // Attempt Video Compression if supported
         final MediaInfo? compressedInfo = await VideoCompress.compressVideo(
           widget.pickedFile.path,
           quality: VideoQuality.MediumQuality,
           deleteOrigin: false,
-        );
+        ).timeout(const Duration(seconds: 15), onTimeout: () {
+          debugPrint("Video compression timed out. Using original file.");
+          return null;
+        });
 
-        finalPath = compressedInfo?.file?.path ?? compressedInfo?.path ?? widget.pickedFile.path;
+        if (compressedInfo?.file != null && await compressedInfo!.file!.exists()) {
+          finalPath = compressedInfo.file!.path;
+        } else if (compressedInfo?.path != null) {
+          finalPath = compressedInfo!.path!;
+        }
       } on MissingPluginException {
-        // Native fallback if video_compress plugin binary is unavailable on host
         finalPath = widget.pickedFile.path;
-      } catch (_) {
+      } catch (e) {
+        debugPrint("Video compression fallback: $e");
         finalPath = widget.pickedFile.path;
       }
 
-      // 3. File Size Check (< 50 MB)
+      // Check final file size (< 100 MB)
       try {
         final finalBytes = await File(finalPath).length();
         final finalMB = finalBytes / (1024 * 1024);
-        if (finalMB > 50) {
+        if (finalMB > 100) {
           setState(() {
-            _isCompressing = false;
-            _errorMessage = "Video size is ${finalMB.toStringAsFixed(1)} MB (Exceeds 50 MB limit).";
+            _isProcessing = false;
+            _errorMessage = "File size is ${finalMB.toStringAsFixed(1)} MB (Exceeds 100 MB limit).";
           });
           return;
         }
@@ -116,7 +130,7 @@ class _MediaSendPreviewDialogState extends State<MediaSendPreviewDialog> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       child: Container(
         padding: const EdgeInsets.all(20),
-        constraints: const BoxConstraints(maxWidth: 400),
+        constraints: const BoxConstraints(maxWidth: 420),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -124,15 +138,25 @@ class _MediaSendPreviewDialogState extends State<MediaSendPreviewDialog> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  widget.isVideo ? "Preview Video" : "Preview Photo",
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
+                Row(
+                  children: [
+                    Icon(
+                      widget.isVideo ? Icons.videocam_rounded : Icons.image_rounded,
+                      color: accent,
+                      size: 22,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      widget.isVideo ? "Preview Video" : "Preview Photo",
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
                 ),
-                if (!_isCompressing)
+                if (!_isProcessing)
                   IconButton(
                     icon: const Icon(Icons.close, color: Colors.white54),
                     onPressed: () => Navigator.pop(context),
@@ -141,43 +165,53 @@ class _MediaSendPreviewDialogState extends State<MediaSendPreviewDialog> {
             ),
             const SizedBox(height: 14),
 
-            // Preview Area
+            // Media Preview Container
             Container(
               height: 220,
               decoration: BoxDecoration(
                 color: const Color(0xFF0F172A),
                 borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: Colors.white.withOpacity(0.08)),
               ),
               clipBehavior: Clip.antiAlias,
               child: widget.isVideo
                   ? InlineVideoPlayer(videoPath: widget.pickedFile.path)
                   : (kIsWeb || widget.pickedFile.path.startsWith('http')
-                      ? Image.network(widget.pickedFile.path, fit: BoxFit.cover)
-                      : Image.file(File(widget.pickedFile.path), fit: BoxFit.cover)),
+                      ? Image.network(
+                          widget.pickedFile.path,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => _buildPlaceholder(),
+                        )
+                      : Image.file(
+                          File(widget.pickedFile.path),
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => _buildPlaceholder(),
+                        )),
             ),
 
-            const SizedBox(height: 12),
+            const SizedBox(height: 10),
             if (_fileSizeMB > 0)
               Text(
-                "Original Size: ${_fileSizeMB.toStringAsFixed(1)} MB",
-                style: const TextStyle(color: Colors.white54, fontSize: 12),
+                "Original File Size: ${_fileSizeMB.toStringAsFixed(1)} MB",
+                style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 12),
                 textAlign: TextAlign.center,
               ),
 
             const SizedBox(height: 14),
 
-            // Optional Caption Field
+            // Caption Text Field
             TextField(
               controller: _captionController,
-              enabled: !_isCompressing,
-              style: const TextStyle(color: Colors.white),
+              enabled: !_isProcessing,
+              style: const TextStyle(color: Colors.white, fontSize: 14.5),
               decoration: InputDecoration(
-                hintText: "Add a caption (optional)...",
-                hintStyle: const TextStyle(color: Colors.white30),
+                hintText: "Add a caption...",
+                hintStyle: TextStyle(color: Colors.white.withOpacity(0.35)),
+                prefixIcon: const Icon(Icons.short_text_rounded, color: Colors.white38),
                 filled: true,
                 fillColor: const Color(0xFF0F172A),
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(14),
                   borderSide: BorderSide.none,
                 ),
               ),
@@ -194,32 +228,60 @@ class _MediaSendPreviewDialogState extends State<MediaSendPreviewDialog> {
 
             const SizedBox(height: 20),
 
-            // Send / Compress Action Button
+            // Action Button with Live Progress Bar
             ElevatedButton(
               style: ElevatedButton.styleFrom(
                 backgroundColor: accent,
                 padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
               ),
-              onPressed: _isCompressing ? null : _processAndSend,
-              child: _isCompressing
+              onPressed: _isProcessing ? null : _processAndSend,
+              child: _isProcessing
                   ? Row(
                       mainAxisAlignment: MainAxisAlignment.center,
-                      children: const [
-                        SizedBox(
+                      children: [
+                        const SizedBox(
                           width: 18,
                           height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                          child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
                         ),
-                        SizedBox(width: 12),
-                        Text("Compressing & Processing...", style: TextStyle(color: Colors.white)),
+                        const SizedBox(width: 12),
+                        Text(
+                          _compressionPercent > 0
+                              ? "Compressing Video: ${_compressionPercent.toInt()}%"
+                              : (widget.isVideo ? "Compressing Video..." : "Preparing Photo..."),
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                        ),
                       ],
                     )
-                  : Text(
-                      widget.isVideo ? "Compress & Send" : "Send Photo",
-                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.white),
+                  : Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.send_rounded, size: 18, color: Colors.white),
+                        const SizedBox(width: 8),
+                        Text(
+                          widget.isVideo ? "Compress & Send" : "Send Photo",
+                          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.white),
+                        ),
+                      ],
                     ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPlaceholder() {
+    return Container(
+      color: const Color(0xFF0F172A),
+      child: const Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.image_outlined, size: 40, color: Colors.white24),
+            SizedBox(height: 8),
+            Text("Preview unavailable", style: TextStyle(color: Colors.white38, fontSize: 12)),
           ],
         ),
       ),

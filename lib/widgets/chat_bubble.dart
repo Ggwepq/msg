@@ -3,9 +3,11 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/chat_message.dart';
+import '../services/chat_service.dart';
 import '../services/theme_service.dart';
 import 'full_screen_media_viewer.dart';
 import 'inline_video_player.dart';
+
 
 class ChatBubble extends StatefulWidget {
   final ChatMessage message;
@@ -48,49 +50,140 @@ class _ChatBubbleState extends State<ChatBubble> {
     final mediaPath = widget.message.mediaPath;
     if (mediaPath == null || mediaPath.isEmpty) return const SizedBox.shrink();
 
+    final uploadProgress = ChatService().getUploadProgress(widget.message.id);
+    final isUploading = uploadProgress != null;
+
+    Widget mediaWidget;
     if (widget.message.messageType == 'image') {
-      return Container(
-        margin: const EdgeInsets.only(bottom: 6),
-        width: 200,
-        height: 200,
-        clipBehavior: Clip.antiAlias,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
-          color: theme.surfaceLight,
-        ),
-        child: kIsWeb || mediaPath.startsWith('http')
-            ? Image.network(
-                mediaPath,
-                width: 200,
-                height: 200,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => _buildMediaError("Image file unavailable"),
-              )
-            : Image.file(
-                File(mediaPath),
-                width: 200,
-                height: 200,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => _buildMediaError("Image file unavailable"),
-              ),
-      );
-    } else if (widget.message.messageType == 'video') {
-      return Container(
-        margin: const EdgeInsets.only(bottom: 6),
-        width: 200,
-        height: 200,
-        clipBehavior: Clip.antiAlias,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
-          color: theme.surfaceLight,
-        ),
-        child: InlineVideoPlayer(
-          videoPath: mediaPath,
-          onOpenFullScreen: _openFullScreenViewer,
-        ),
+      if (kIsWeb || mediaPath.startsWith('http')) {
+        mediaWidget = Image.network(
+          mediaPath,
+          width: 200,
+          height: 200,
+          fit: BoxFit.cover,
+          loadingBuilder: (context, child, loadingProgress) {
+            if (loadingProgress == null) return child;
+            final percent = loadingProgress.expectedTotalBytes != null && loadingProgress.expectedTotalBytes! > 0
+                ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes!
+                : null;
+            return _buildMediaLoadingPlaceholder(percent: percent, status: "Loading photo...");
+          },
+          errorBuilder: (_, __, ___) => _buildMediaError("Photo unavailable"),
+        );
+      } else {
+        mediaWidget = Image.file(
+          File(mediaPath),
+          width: 200,
+          height: 200,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => _buildMediaError("Photo file unavailable"),
+        );
+      }
+    } else {
+      mediaWidget = InlineVideoPlayer(
+        videoPath: mediaPath,
+        onOpenFullScreen: _openFullScreenViewer,
       );
     }
-    return const SizedBox.shrink();
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      width: 200,
+      height: 200,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        color: theme.surfaceLight,
+      ),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          mediaWidget,
+          if (isUploading)
+            _buildUploadProgressOverlay(accent, uploadProgress),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMediaLoadingPlaceholder({double? percent, String status = "Loading..."}) {
+    return Container(
+      width: 200,
+      height: 200,
+      color: const Color(0xFF1E293B),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.image_outlined, color: Colors.white38, size: 36),
+          const SizedBox(height: 10),
+          if (percent != null) ...[
+            SizedBox(
+              width: 110,
+              child: LinearProgressIndicator(
+                value: percent,
+                backgroundColor: Colors.white12,
+                color: Colors.white70,
+                minHeight: 4,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              "${(percent * 100).toInt()}%",
+              style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold),
+            ),
+          ] else ...[
+            const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white54),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              status,
+              style: const TextStyle(color: Colors.white54, fontSize: 11),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildUploadProgressOverlay(Color accent, double progress) {
+    final percentInt = (progress * 100).clamp(0, 100).toInt();
+    return Container(
+      color: Colors.black.withOpacity(0.65),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: Colors.black.withOpacity(0.3),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.cloud_upload_outlined, color: Colors.white, size: 28),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            "Uploading... $percentInt%",
+            style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+          ),
+
+          const SizedBox(height: 8),
+          SizedBox(
+            width: 120,
+            child: LinearProgressIndicator(
+              value: progress,
+              backgroundColor: Colors.white24,
+              color: accent,
+              minHeight: 4,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildMediaError(String msg) {
@@ -98,19 +191,20 @@ class _ChatBubbleState extends State<ChatBubble> {
       width: 200,
       height: 200,
       padding: const EdgeInsets.all(12),
-      color: Colors.black26,
+      color: const Color(0xFF1E293B),
       child: Center(
-        child: Row(
+        child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.broken_image_outlined, color: Colors.white54, size: 18),
-            const SizedBox(width: 6),
+            const Icon(Icons.broken_image_outlined, color: Colors.white38, size: 28),
+            const SizedBox(height: 6),
             Text(msg, style: const TextStyle(color: Colors.white54, fontSize: 12)),
           ],
         ),
       ),
     );
   }
+
 
   @override
   Widget build(BuildContext context) {

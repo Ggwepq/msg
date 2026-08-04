@@ -44,6 +44,8 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
+*.hprof
+
 # Environment variables & secrets
 .env
 *.env
@@ -51,4 +53,5 @@ google-services.json
 **/google-services.json
 GoogleService-Info.plist
 **/GoogleService-Info.plist
+
 

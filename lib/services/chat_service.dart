@@ -537,6 +537,10 @@ class ChatService extends ChangeNotifier {
     }
   }
 
+  final Map<String, double> _uploadProgress = {};
+
+  double? getUploadProgress(String messageId) => _uploadProgress[messageId];
+
   Future<void> sendMessage({
     required String text,
     required String receiverId,
@@ -548,25 +552,12 @@ class ChatService extends ChangeNotifier {
     if (_currentUser == null) return;
     if (text.trim().isEmpty && mediaPath == null) return;
 
-    String? finalMediaPath = mediaPath;
+    final String messageId = "msg_${DateTime.now().millisecondsSinceEpoch}";
+    final String localMediaPath = mediaPath ?? '';
 
-    if (isFirebaseReady && mediaPath != null && mediaPath.isNotEmpty && !mediaPath.startsWith('http')) {
-      final file = File(mediaPath);
-      if (await file.exists()) {
-        try {
-          final fileName = "${DateTime.now().millisecondsSinceEpoch}_${file.path.split('/').last}";
-          final storageRef = FirebaseStorage.instance.ref().child('chat_media/$fileName');
-          final uploadTask = await storageRef.putFile(file);
-          final downloadUrl = await uploadTask.ref.getDownloadURL();
-          finalMediaPath = downloadUrl;
-        } catch (e) {
-          debugPrint('Firebase Storage upload notice: $e');
-        }
-      }
-    }
-
+    // 1. Immediately create message with local path for instant UI feedback
     final newMessage = ChatMessage(
-      id: "msg_${DateTime.now().millisecondsSinceEpoch}",
+      id: messageId,
       senderId: _currentUser!.id,
       senderNickname: _currentUser!.nickname,
       receiverId: receiverId,
@@ -575,11 +566,74 @@ class ChatService extends ChangeNotifier {
       replyToText: replyToText,
       replyToSender: replyToSender,
       messageType: messageType,
-      mediaPath: finalMediaPath,
+      mediaPath: mediaPath,
     );
 
     _messages.add(newMessage);
+    await _saveMessagesLocal();
+    notifyListeners();
 
+    // 2. Perform background upload if media file exists and Firebase is active
+    if (isFirebaseReady && localMediaPath.isNotEmpty && !localMediaPath.startsWith('http')) {
+      final file = File(localMediaPath);
+      if (await file.exists()) {
+        _uploadProgress[messageId] = 0.01;
+        notifyListeners();
+
+        try {
+          final fileName = "${DateTime.now().millisecondsSinceEpoch}_${file.path.split('/').last}";
+          final storageRef = FirebaseStorage.instance.ref().child('chat_media/$fileName');
+          final uploadTask = storageRef.putFile(file);
+
+          final sub = uploadTask.snapshotEvents.listen((TaskSnapshot snapshot) {
+            if (snapshot.totalBytes > 0) {
+              _uploadProgress[messageId] = snapshot.bytesTransferred / snapshot.totalBytes;
+              notifyListeners();
+            }
+          });
+
+          final TaskSnapshot completedSnapshot = await uploadTask;
+          final downloadUrl = await completedSnapshot.ref.getDownloadURL();
+          await sub.cancel();
+          _uploadProgress.remove(messageId);
+
+          // Update message with public cloud URL
+          final index = _messages.indexWhere((m) => m.id == messageId);
+          if (index != -1) {
+            _messages[index] = ChatMessage(
+              id: newMessage.id,
+              senderId: newMessage.senderId,
+              senderNickname: newMessage.senderNickname,
+              receiverId: newMessage.receiverId,
+              text: newMessage.text,
+              timestamp: newMessage.timestamp,
+              isRead: newMessage.isRead,
+              replyToText: newMessage.replyToText,
+              replyToSender: newMessage.replyToSender,
+              messageType: newMessage.messageType,
+              mediaPath: downloadUrl,
+              isDeleted: newMessage.isDeleted,
+              reactions: newMessage.reactions,
+            );
+
+            await FirebaseFirestore.instance
+                .collection('chat_messages')
+                .doc(messageId)
+                .set(_messages[index].toJson());
+
+            await _saveMessagesLocal();
+            notifyListeners();
+          }
+          return;
+        } catch (e) {
+          debugPrint('Firebase Storage upload notice: $e');
+          _uploadProgress.remove(messageId);
+          notifyListeners();
+        }
+      }
+    }
+
+    // Write to Firestore if not uploading media or if upload was skipped
     if (isFirebaseReady) {
       try {
         await FirebaseFirestore.instance
@@ -588,10 +642,8 @@ class ChatService extends ChangeNotifier {
             .set(newMessage.toJson());
       } catch (_) {}
     }
-
-    await _saveMessagesLocal();
-    notifyListeners();
   }
+
 
   List<ChatMessage> getConversationWith(String otherUserId) {
     if (_currentUser == null) return [];
