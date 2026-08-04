@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import '../services/chat_service.dart';
 import '../services/theme_service.dart';
 import '../models/user_profile.dart';
+import '../widgets/notification_permission_dialog.dart';
 
 class LoginScreen extends StatefulWidget {
+
   final Function(UserProfile) onLoginSuccess;
 
   const LoginScreen({super.key, required this.onLoginSuccess});
@@ -100,6 +102,8 @@ class _LoginScreenState extends State<LoginScreen>
   }
 
   Future<void> _handleCompleteLogin() async {
+
+
     if (_validatedKeyInfo == null) return;
     setState(() {
       _isLoading = true;
@@ -112,7 +116,12 @@ class _LoginScreenState extends State<LoginScreen>
         keyInput: _validatedKeyInfo!.key,
         nickname: _nicknameController.text,
       );
-      widget.onLoginSuccess(user);
+      if (mounted) {
+        await NotificationPermissionDialog.checkAndShow(
+          context,
+          onDone: () => widget.onLoginSuccess(user),
+        );
+      }
     } catch (e) {
       setState(() {
         _errorMessage = e.toString().replaceAll("Exception: ", "");
@@ -121,6 +130,7 @@ class _LoginScreenState extends State<LoginScreen>
       if (mounted) setState(() => _isLoading = false);
     }
   }
+
 
   @override
   Widget build(BuildContext context) {

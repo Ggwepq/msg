@@ -655,6 +655,54 @@ class ChatService extends ChangeNotifier {
       ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
   }
 
+  int getUnreadCountFrom(String otherUserId) {
+    if (_currentUser == null) return 0;
+    return _messages.where((m) =>
+        m.senderId == otherUserId &&
+        m.receiverId == _currentUser!.id &&
+        !m.isRead &&
+        !m.isDeleted).length;
+  }
+
+  Future<void> markMessagesAsRead(String otherUserId) async {
+    if (_currentUser == null) return;
+    bool updated = false;
+    for (int i = 0; i < _messages.length; i++) {
+      final m = _messages[i];
+      if (m.senderId == otherUserId && m.receiverId == _currentUser!.id && !m.isRead) {
+        _messages[i] = ChatMessage(
+          id: m.id,
+          senderId: m.senderId,
+          senderNickname: m.senderNickname,
+          receiverId: m.receiverId,
+          text: m.text,
+          timestamp: m.timestamp,
+          isRead: true,
+          replyToText: m.replyToText,
+          replyToSender: m.replyToSender,
+          messageType: m.messageType,
+          mediaPath: m.mediaPath,
+          isDeleted: m.isDeleted,
+          reactions: m.reactions,
+        );
+        updated = true;
+        if (isFirebaseReady) {
+          try {
+            await FirebaseFirestore.instance
+                .collection('chat_messages')
+                .doc(m.id)
+                .update({'isRead': true});
+          } catch (_) {}
+        }
+      }
+    }
+    if (updated) {
+      await _saveMessagesLocal();
+      notifyListeners();
+    }
+  }
+
+
   Future<ConnectionRequest> requestConnectionByKey(String rawKey) async {
     if (_currentUser == null) throw Exception("Not logged in.");
 
@@ -787,7 +835,10 @@ class ChatService extends ChangeNotifier {
     }
   }
 
+  List<UserProfile> getActiveFriendList() => getAvailableChats();
+
   List<UserProfile> getAvailableChats() {
+
     if (_currentUser == null) return [];
 
     if (_currentUser!.role == UserRole.admin) {

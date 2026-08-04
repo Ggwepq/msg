@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import '../models/connection_request.dart';
 import '../models/user_profile.dart';
 import '../services/chat_service.dart';
+import '../services/notification_service.dart';
 import '../services/theme_service.dart';
 import 'chat_detail_screen.dart';
 import 'settings_screen.dart';
+
 
 class ChatListScreen extends StatefulWidget {
   final UserProfile currentUser;
@@ -42,9 +44,134 @@ class _ChatListScreenState extends State<ChatListScreen>
     super.dispose();
   }
 
+  int _lastMessageCount = 0;
+  String? _lastNotifiedMessageId;
+
   void _onStateChanged() {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+
+    final currentMessages = _chatService.messages;
+    if (_lastMessageCount > 0 && currentMessages.length > _lastMessageCount) {
+      final latest = currentMessages.last;
+      final user = _chatService.currentUser ?? widget.currentUser;
+      if (latest.receiverId == user.id &&
+          latest.senderId != user.id &&
+          latest.id != _lastNotifiedMessageId) {
+        _lastNotifiedMessageId = latest.id;
+        _showInAppNotificationBanner(latest);
+      }
+    }
+    _lastMessageCount = currentMessages.length;
+    setState(() {});
   }
+
+  void _showInAppNotificationBanner(dynamic msg) {
+
+    final accent = _theme.primary;
+    final user = _chatService.currentUser ?? widget.currentUser;
+
+    String previewText = msg.text ?? '';
+    if (msg.messageType == 'image') {
+      previewText = (msg.text != null && msg.text.isNotEmpty) ? "📷 ${msg.text}" : "📷 Sent a photo";
+    } else if (msg.messageType == 'video') {
+      previewText = (msg.text != null && msg.text.isNotEmpty) ? "🎥 ${msg.text}" : "🎥 Sent a video";
+    }
+
+    // Trigger system-level native notification (lock screen & system tray)
+    NotificationService().showNotification(
+      id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      title: msg.senderNickname,
+      body: previewText,
+    );
+
+
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        duration: const Duration(seconds: 4),
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.only(bottom: 24, left: 16, right: 16),
+        backgroundColor: const Color(0xFF1E293B),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: accent.withOpacity(0.4), width: 1.5),
+        ),
+        content: InkWell(
+          onTap: () {
+            ScaffoldMessenger.of(context).hideCurrentSnackBar();
+            final peer = _chatService.getAvailableChats().firstWhere(
+                  (u) => u.id == msg.senderId,
+                  orElse: () => UserProfile(
+                    id: msg.senderId,
+                    nickname: msg.senderNickname,
+                    role: UserRole.friend,
+                    lastSeen: DateTime.now(),
+                  ),
+                );
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => ChatDetailScreen(
+                  currentUser: user,
+                  peerUser: peer,
+                ),
+              ),
+            );
+          },
+          child: Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: accent.withOpacity(0.2),
+                  shape: BoxShape.circle,
+                ),
+                child: Center(
+                  child: Text(
+                    msg.senderNickname.isNotEmpty ? msg.senderNickname[0].toUpperCase() : "?",
+                    style: TextStyle(color: accent, fontWeight: FontWeight.bold, fontSize: 16),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          msg.senderNickname,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        const Text("• now", style: TextStyle(color: Colors.white54, fontSize: 11)),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      previewText,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: Colors.white70, fontSize: 12.5),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right_rounded, color: Colors.white54),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
 
   void _showAddFriendDialog(UserProfile currentUser) {
     String? errorText;
@@ -432,11 +559,24 @@ class _ChatListScreenState extends State<ChatListScreen>
                 delegate: SliverChildBuilderDelegate(
                   (context, index) {
                     final chatUser = availableChats[index];
-                    final conversation =
-                        _chatService.getConversationWith(chatUser.id);
-                    final lastMsg = conversation.isNotEmpty
-                        ? conversation.last.text
-                        : "tap to say hi";
+                    final conversation = _chatService.getConversationWith(chatUser.id);
+                    final unreadCount = _chatService.getUnreadCountFrom(chatUser.id);
+                    final isUnread = unreadCount > 0;
+
+                    String lastMsgSnippet = "tap to say hi";
+                    if (conversation.isNotEmpty) {
+                      final last = conversation.last;
+                      if (last.isDeleted) {
+                        lastMsgSnippet = "message deleted";
+                      } else if (last.messageType == 'image') {
+                        lastMsgSnippet = last.text.isNotEmpty ? "📷 ${last.text}" : "📷 Photo";
+                      } else if (last.messageType == 'video') {
+                        lastMsgSnippet = last.text.isNotEmpty ? "🎥 ${last.text}" : "🎥 Video";
+                      } else {
+                        lastMsgSnippet = last.text;
+                      }
+                    }
+
                     final lastTime = conversation.isNotEmpty
                         ? _formatTime(conversation.last.timestamp)
                         : "";
@@ -497,28 +637,52 @@ class _ChatListScreenState extends State<ChatListScreen>
                               child: Container(
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 16, vertical: 14),
+                                decoration: isUnread
+                                    ? BoxDecoration(
+                                        color: accent.withOpacity(0.06),
+                                        borderRadius: BorderRadius.circular(16),
+                                      )
+                                    : null,
                                 child: Row(
                                   children: [
-                                    Container(
-                                      width: 48,
-                                      height: 48,
-                                      decoration: BoxDecoration(
-                                        color: accent.withOpacity(0.12),
-                                        shape: BoxShape.circle,
-                                      ),
-                                      child: Center(
-                                        child: Text(
-                                          chatUser.nickname.isNotEmpty
-                                              ? chatUser.nickname[0]
-                                                  .toUpperCase()
-                                              : "?",
-                                          style: TextStyle(
-                                            color: accent,
-                                            fontWeight: FontWeight.w800,
-                                            fontSize: 18,
+                                    Stack(
+                                      children: [
+                                        Container(
+                                          width: 48,
+                                          height: 48,
+                                          decoration: BoxDecoration(
+                                            color: isUnread ? accent.withOpacity(0.2) : accent.withOpacity(0.12),
+                                            shape: BoxShape.circle,
+                                          ),
+                                          child: Center(
+                                            child: Text(
+                                              chatUser.nickname.isNotEmpty
+                                                  ? chatUser.nickname[0]
+                                                      .toUpperCase()
+                                                  : "?",
+                                              style: TextStyle(
+                                                color: accent,
+                                                fontWeight: FontWeight.w800,
+                                                fontSize: 18,
+                                              ),
+                                            ),
                                           ),
                                         ),
-                                      ),
+                                        if (isUnread)
+                                          Positioned(
+                                            right: 0,
+                                            top: 0,
+                                            child: Container(
+                                              width: 12,
+                                              height: 12,
+                                              decoration: BoxDecoration(
+                                                color: accent,
+                                                shape: BoxShape.circle,
+                                                border: Border.all(color: _theme.bg, width: 2),
+                                              ),
+                                            ),
+                                          ),
+                                      ],
                                     ),
                                     const SizedBox(width: 14),
                                     Expanded(
@@ -530,31 +694,64 @@ class _ChatListScreenState extends State<ChatListScreen>
                                             chatUser.nickname,
                                             style: TextStyle(
                                               color: _theme.textPrimary,
-                                              fontWeight: FontWeight.w700,
+                                              fontWeight: isUnread ? FontWeight.w900 : FontWeight.w700,
                                               fontSize: 15,
                                             ),
                                           ),
                                           const SizedBox(height: 3),
                                           Text(
-                                            lastMsg,
+                                            lastMsgSnippet,
                                             maxLines: 1,
                                             overflow: TextOverflow.ellipsis,
                                             style: TextStyle(
-                                              color: _theme.textSecondary,
+                                              color: isUnread ? accent : _theme.textSecondary,
+                                              fontWeight: isUnread ? FontWeight.w700 : FontWeight.w400,
                                               fontSize: 13,
                                             ),
                                           ),
                                         ],
                                       ),
                                     ),
-                                    if (lastTime.isNotEmpty)
-                                      Text(
-                                        lastTime,
-                                        style: TextStyle(
-                                          color: _theme.textMuted,
-                                          fontSize: 11,
-                                        ),
-                                      ),
+                                    Column(
+                                      crossAxisAlignment: CrossAxisAlignment.end,
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        if (lastTime.isNotEmpty)
+                                          Text(
+                                            lastTime,
+                                            style: TextStyle(
+                                              color: isUnread ? accent : _theme.textMuted,
+                                              fontWeight: isUnread ? FontWeight.bold : FontWeight.normal,
+                                              fontSize: 11,
+                                            ),
+                                          ),
+                                        if (isUnread) ...[
+                                          const SizedBox(height: 4),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                                            decoration: BoxDecoration(
+                                              color: accent,
+                                              borderRadius: BorderRadius.circular(10),
+                                              boxShadow: [
+                                                BoxShadow(
+                                                  color: accent.withOpacity(0.4),
+                                                  blurRadius: 6,
+                                                  offset: const Offset(0, 2),
+                                                ),
+                                              ],
+                                            ),
+                                            child: Text(
+                                              "$unreadCount",
+                                              style: const TextStyle(
+                                                color: Colors.white,
+                                                fontSize: 10.5,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
                                   ],
                                 ),
                               ),
@@ -563,6 +760,7 @@ class _ChatListScreenState extends State<ChatListScreen>
                         ),
                       ),
                     );
+
                   },
                   childCount: availableChats.length,
                 ),

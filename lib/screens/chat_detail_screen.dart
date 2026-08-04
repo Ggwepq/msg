@@ -41,6 +41,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
   @override
   void initState() {
     super.initState();
+    _chatService.markMessagesAsRead(widget.peerUser.id);
     _chatService.addListener(_onChatUpdated);
     _theme.addListener(_onChatUpdated);
     _entranceController = AnimationController(
@@ -64,10 +65,12 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
 
   void _onChatUpdated() {
     if (mounted) {
+      _chatService.markMessagesAsRead(widget.peerUser.id);
       setState(() {});
       _scrollToBottom();
     }
   }
+
 
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {

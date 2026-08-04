@@ -19,6 +19,8 @@ dependencies:
   cloud_firestore: ^5.6.5
   firebase_storage: ^12.4.4
   flutter_dotenv: ^5.2.1
+  flutter_local_notifications: ^17.2.1
+
 
 dev_dependencies:
   flutter_test:
