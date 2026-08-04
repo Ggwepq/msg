@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import '../models/user_profile.dart';
 import '../services/chat_service.dart';
+import '../services/notification_service.dart';
 import '../widgets/chat_bubble.dart';
 import '../widgets/key_badge.dart';
+
 
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key});
@@ -228,12 +230,34 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
         ),
         actions: [
+
+          IconButton(
+            icon: const Icon(Icons.notifications_active_rounded, color: Color(0xFF818CF8)),
+            tooltip: "Test Push Notification",
+            onPressed: () async {
+              await NotificationService().showNotification(
+                id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+                title: "Admin Notification Test 🚀",
+                body: "Push notification test delivered successfully! 🎉",
+              );
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text("Test push notification sent! Check your system tray 🔔"),
+                    backgroundColor: Color(0xFF6366F1),
+                    duration: Duration(seconds: 3),
+                  ),
+                );
+              }
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.logout, color: Colors.white70),
             tooltip: "Logout Admin",
             onPressed: () => _chatService.logout(),
           ),
         ],
+
         bottom: TabBar(
           controller: _tabController,
           indicatorColor: const Color(0xFF6366F1),

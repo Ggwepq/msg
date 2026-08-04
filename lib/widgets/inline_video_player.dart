@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
+import '../services/media_cache_service.dart';
 
 class InlineVideoPlayer extends StatefulWidget {
   final String videoPath;
@@ -31,16 +32,20 @@ class _InlineVideoPlayerState extends State<InlineVideoPlayer> {
 
   Future<void> _initVideoPlayer() async {
     try {
-      final file = File(widget.videoPath);
-      if (!kIsWeb && !widget.videoPath.startsWith('http') && !file.existsSync()) {
-        if (mounted) setState(() => _hasError = true);
-        return;
+      File? cachedFile;
+      if (widget.videoPath.startsWith('http')) {
+        cachedFile = await MediaCacheService().getCachedFile(widget.videoPath);
+      } else {
+        cachedFile = File(widget.videoPath);
       }
 
-      if (kIsWeb || widget.videoPath.startsWith('http')) {
+      if (cachedFile != null && await cachedFile.exists()) {
+        _controller = VideoPlayerController.file(cachedFile);
+      } else if (kIsWeb || widget.videoPath.startsWith('http')) {
         _controller = VideoPlayerController.networkUrl(Uri.parse(widget.videoPath));
       } else {
-        _controller = VideoPlayerController.file(file);
+        if (mounted) setState(() => _hasError = true);
+        return;
       }
 
       await _controller!.initialize();
@@ -99,7 +104,6 @@ class _InlineVideoPlayerState extends State<InlineVideoPlayer> {
 
   @override
   Widget build(BuildContext context) {
-    // If video player engine cannot play natively on host OS (e.g. missing desktop codecs), render a 1:1 Video Card fallback
     if (_hasError || _controller == null) {
       final fileName = widget.videoPath.split('/').last;
       return GestureDetector(
@@ -168,7 +172,6 @@ class _InlineVideoPlayerState extends State<InlineVideoPlayer> {
         child: Stack(
           alignment: Alignment.center,
           children: [
-            // 1:1 Aspect ratio cropped video
             Positioned.fill(
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
@@ -184,8 +187,6 @@ class _InlineVideoPlayerState extends State<InlineVideoPlayer> {
                 ),
               ),
             ),
-
-            // Tap Overlay: Center Play Button toggles playback, tapping outside opens Fullscreen
             Positioned.fill(
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
@@ -214,8 +215,6 @@ class _InlineVideoPlayerState extends State<InlineVideoPlayer> {
                 ),
               ),
             ),
-
-            // Video Duration Badge
             Positioned(
               bottom: 8,
               right: 8,
@@ -235,8 +234,6 @@ class _InlineVideoPlayerState extends State<InlineVideoPlayer> {
                 ),
               ),
             ),
-
-            // Video Progress Bar
             Positioned(
               bottom: 0,
               left: 0,

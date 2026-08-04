@@ -4,10 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/chat_message.dart';
 import '../services/chat_service.dart';
+import '../services/media_cache_service.dart';
 import '../services/theme_service.dart';
 import 'full_screen_media_viewer.dart';
 import 'inline_video_player.dart';
-
 
 class ChatBubble extends StatefulWidget {
   final ChatMessage message;
@@ -31,8 +31,28 @@ class ChatBubble extends StatefulWidget {
 
 class _ChatBubbleState extends State<ChatBubble> {
   bool _isRevealedByAdmin = false;
+  File? _cachedImageFile;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkImageCache();
+  }
+
+  Future<void> _checkImageCache() async {
+    final mediaPath = widget.message.mediaPath;
+    if (mediaPath != null && mediaPath.startsWith('http') && widget.message.messageType == 'image') {
+      final file = await MediaCacheService().getCachedFile(mediaPath);
+      if (mounted && file != null) {
+        setState(() {
+          _cachedImageFile = file;
+        });
+      }
+    }
+  }
 
   void _openFullScreenViewer() {
+
     if (widget.message.mediaPath != null) {
       Navigator.push(
         context,
@@ -54,8 +74,16 @@ class _ChatBubbleState extends State<ChatBubble> {
     final isUploading = uploadProgress != null;
 
     Widget mediaWidget;
+
     if (widget.message.messageType == 'image') {
-      if (kIsWeb || mediaPath.startsWith('http')) {
+      if (_cachedImageFile != null && _cachedImageFile!.existsSync()) {
+        mediaWidget = Image.file(
+          _cachedImageFile!,
+          width: 200,
+          height: 200,
+          fit: BoxFit.cover,
+        );
+      } else if (kIsWeb || mediaPath.startsWith('http')) {
         mediaWidget = Image.network(
           mediaPath,
           width: 200,
@@ -80,6 +108,7 @@ class _ChatBubbleState extends State<ChatBubble> {
         );
       }
     } else {
+
       mediaWidget = InlineVideoPlayer(
         videoPath: mediaPath,
         onOpenFullScreen: _openFullScreenViewer,
